@@ -1,5 +1,6 @@
 #include <vector>
 #include "frame_input.h"
+#include "frame_probe.h"
 #include "det_hash.h"
 #include "timebase_contract.h"
 #include "det_clock.h"
@@ -1012,10 +1013,17 @@ void VI_HLE_PresentFrame(bool presentedXfb, bool paceToRetrace) {
                 Memory::TryRead32(0x80428730u, sceneWord);
                 RT_LOGF(RT_TAG_VI,
                         "slow frame %.1f ms (scene 0x%03X): game %.2f (gx %.2f, disc %.2f in %u reads), present %.2f, "
-                        "end_frame %.2f, pace %.2f\n",
+                        "end_frame %.2f, pace %.2f | totals: draw sync %u (callbacks %u), GKI_delay %u (%llu us), "
+                        "frame accept retries %u (expired %u)\n",
                         frame, sceneWord & 0xFFFFu, ms(presentStart - s_lastEnd), gxMs, dvdMs, frameReads,
                         ms(endFrameStart - presentStart),
-                        ms(paceStart - endFrameStart), ms(now - paceStart));
+                        ms(paceStart - endFrameStart), ms(now - paceStart),
+                        FrameProbe::drawSyncCalls.load(std::memory_order_relaxed),
+                        FrameProbe::drawSyncCallbacks.load(std::memory_order_relaxed),
+                        FrameProbe::gkiDelayCalls.load(std::memory_order_relaxed),
+                        static_cast<unsigned long long>(FrameProbe::gkiDelayMicros.load(std::memory_order_relaxed)),
+                        FrameProbe::beginRetries.load(std::memory_order_relaxed),
+                        FrameProbe::beginExpired.load(std::memory_order_relaxed));
             }
         }
         s_lastEnd = now;

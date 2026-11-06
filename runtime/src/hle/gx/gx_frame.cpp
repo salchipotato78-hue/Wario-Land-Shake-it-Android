@@ -1,5 +1,6 @@
 #include "gx_internal.h"
 #include "runtime_log.h"
+#include "frame_probe.h"
 
 #include <cstdio>
 
@@ -71,6 +72,7 @@ void BeginNextAuroraFrameWithRetry(std::chrono::milliseconds timeout) {
         UpdateAuroraAndProcessEvents();
         ++attempts;
         if (BeginAuroraFrame()) {
+            FrameProbe::beginRetries.fetch_add(attempts, std::memory_order_relaxed);
             g_auroraFrameActive.store(true, std::memory_order_release);
             return;
         }
@@ -86,6 +88,8 @@ void BeginNextAuroraFrameWithRetry(std::chrono::milliseconds timeout) {
     // Retry window expired: the aurora frame stays INACTIVE and every GX
     // command until the next EnsureAuroraFrameActive is silently dropped
     // (draws, one-shot bakes, copies). This is a frame-loss event.
+    FrameProbe::beginRetries.fetch_add(attempts, std::memory_order_relaxed);
+    FrameProbe::beginExpired.fetch_add(1, std::memory_order_relaxed);
     static uint32_t s_beginExpiredLogCount = 0;
     if (s_beginExpiredLogCount < 256 || (s_beginExpiredLogCount & 255) == 0) {
         RT_LOGF(RT_TAG_GX, "BeginAuroraFrame retry EXPIRED after %u attempts; frame remains inactive (n=%u)\n",

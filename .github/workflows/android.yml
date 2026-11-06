@@ -34,9 +34,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Translated shards and ninja use every core of the runner (4 on ubuntu-24.04 today, more on larger runners).
+      # Each translated-code shard needs about 2 GB of RAM to compile (the PC build's rule, tools/build-wario.ps1),
+      # so the job count is the smaller of the cores and (RAM - 6 GB) / 2.
       - name: Set parallel jobs
-        run: echo "WARIO_JOBS=$(nproc)" >> "$GITHUB_ENV"
+        run: |
+          cores=$(nproc)
+          ram_gb=$(awk '/MemTotal/ {printf "%d", $2 / 1024 / 1024}' /proc/meminfo)
+          jobs=$(( (ram_gb - 6) / 2 ))
+          if [ "$jobs" -gt "$cores" ]; then jobs=$cores; fi
+          if [ "$jobs" -lt 1 ]; then jobs=1; fi
+          echo "WARIO_JOBS=$jobs" >> "$GITHUB_ENV"
+          echo "Translated-code shard jobs: $jobs (cores $cores, RAM ${ram_gb} GB)"
 
       - name: Free disk space on the runner
         # The translated runtime and its object files need more room than the default runner image leaves free.

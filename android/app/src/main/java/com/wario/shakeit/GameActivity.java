@@ -173,7 +173,7 @@ public class GameActivity extends SDLActivity {
         SetupActivity.touchStartMarker(this);
 
         // Before the runtime starts (it reads Config.toml once): ask for no more frame interpolation
-        // than this screen can show. 180 FPS on a 120 Hz panel leaves the interpolated frames
+        // than this screen can show. A target the panel cannot present leaves the interpolated frames
         // unpresentable, which the runtime reads as overrun and drops to 60 Hz judder.
         matchInterpolationToDisplay();
 
@@ -188,7 +188,7 @@ public class GameActivity extends SDLActivity {
         // The launcher's choices (Config.toml), so the in-game picture matches the start menu.
         nativeApplyDisplaySettings(configAspect(), configRenderScale(), configBool("video", "show_fps", false));
 
-        // 120 or 180 FPS frame interpolation needs a display that runs that fast: ask for its mode.
+        // 120 FPS frame interpolation needs a display that runs that fast: ask for its mode.
         requestDisplayRate(configInt("video", "frame_interpolation_fps", 0));
 
         overlay = new TouchOverlay(this);

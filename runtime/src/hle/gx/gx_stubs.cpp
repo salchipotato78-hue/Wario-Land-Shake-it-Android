@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "gx_internal.h"
+#include "frame_probe.h"
 #include "runtime_log.h"
 
 extern "C" void __GXSetSUTexRegs();
@@ -28,6 +29,7 @@ extern "C" void GX__SetDrawSync_8016ed08(uint32_t token) {
 extern "C" void GX__SetDrawSync_8016e9fc(uint32_t token) { GX__SetDrawSync_8016ed08(token); }
 
 extern "C" void GAME_GXSetDrawSync(uint32_t token) {
+    FrameProbe::drawSyncCalls.fetch_add(1, std::memory_order_relaxed);
     constexpr uint32_t kGamePeRegPtrAddr = 0x80001848u /* WARIO-QUARANTINE: base 0x8056DF70 sin verificar */;
     constexpr uint32_t kGamePeRegBlock = 0x80002F00u;    // low-memory debugger area; no exception vectors are installed
     try {
@@ -42,6 +44,7 @@ extern "C" void GAME_GXSetDrawSync(uint32_t token) {
         if (Memory::TryRead32(wpCur->gpr[13] - 0x2718u, wpCb) && wpCb != 0) {
             CpuContext wpTmp = *wpCur;
             wpTmp.gpr[3] = token;
+            FrameProbe::drawSyncCallbacks.fetch_add(1, std::memory_order_relaxed);
             InvokeIndirectCpu(wpCb, &wpTmp);
         }
     }

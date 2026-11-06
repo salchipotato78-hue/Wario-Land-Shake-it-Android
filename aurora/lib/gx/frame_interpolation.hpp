@@ -41,7 +41,7 @@ namespace detail {
 extern std::atomic_uint32_t g_frameInterpolationFps;
 } // namespace detail
 
-// 0 when interpolation is disabled; otherwise the configured target (120/180/240).
+// 0 when interpolation is disabled; otherwise the configured target (120).
 inline uint32_t frame_interpolation_fps() noexcept {
   return detail::g_frameInterpolationFps.load(std::memory_order_acquire);
 }

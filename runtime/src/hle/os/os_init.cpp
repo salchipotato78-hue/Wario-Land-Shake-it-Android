@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include "frame_probe.h"
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -92,6 +93,8 @@ extern "C" void GKI_delay_HLE_801301b4(CpuContext* ctx)
 {
     const uint32_t delayMs = ctx ? static_cast<uint32_t>(ctx->gpr[3]) : 0;
     const uint32_t sleepMs = delayMs == 0 ? 1u : std::min(delayMs, 10u);
+    FrameProbe::gkiDelayCalls.fetch_add(1, std::memory_order_relaxed);
+    FrameProbe::gkiDelayMicros.fetch_add(sleepMs * 1000ull, std::memory_order_relaxed);
     std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
 }
 

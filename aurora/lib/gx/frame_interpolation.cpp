@@ -92,8 +92,10 @@ private:
   InterpolationWorkerPool() {
     const unsigned hardware = std::thread::hardware_concurrency();
     // The caller helps too. Cap the helpers: tasks are short memcpy+math, so dispatch
-    // overhead and memory bandwidth dominate past a few threads.
-    const unsigned helpers = hardware > 2 ? std::min(hardware - 1, 6u) : 0;
+    // overhead and memory bandwidth dominate past a few threads. Three helpers (four threads with
+    // the caller) leave the other cores to the guest CPU thread, GPU encode and audio on a phone,
+    // where the old cap of six added seven busy threads to an 8-core device.
+    const unsigned helpers = hardware > 2 ? std::min(hardware - 1, 3u) : 0;
     m_workers.reserve(helpers);
     for (unsigned i = 0; i < helpers; ++i) {
       m_workers.emplace_back([this] { worker_loop(); });
@@ -732,7 +734,7 @@ float snapshot_match_distance_squared(const FrameTransformEntry& previousEntry,
 }
 
 void set_frame_interpolation_fps(uint32_t targetFps) noexcept {
-  if (targetFps != 120 && targetFps != 180 && targetFps != 240) {
+  if (targetFps != 120) {
     targetFps = 0;
   }
   detail::g_frameInterpolationFps.store(targetFps, std::memory_order_release);
@@ -1139,9 +1141,14 @@ void finalize_frame_interpolation() noexcept {
   if (eligible) {
     // Prepare each matched pair once: every sample of a draw shares the same
     // previous/current matrices. A flat vector keeps the sample tasks parallel.
-    std::vector<PreparedTransformInterpolation> preparedTransforms(s_currentFrameTransforms.size());
-    std::vector<uint8_t> preparedTransformState(s_currentFrameTransforms.size(), 0);
-    std::vector<PreparedAffinePair> preparedPairs;
+    // Frame-persistent like the matching scratch above: all uses stay inside this call, and the
+    // dispatch below is blocking, so reusing the capacity across frames is safe.
+    static std::vector<PreparedTransformInterpolation> preparedTransforms;
+    static std::vector<uint8_t> preparedTransformState;
+    static std::vector<PreparedAffinePair> preparedPairs;
+    preparedTransforms.assign(s_currentFrameTransforms.size(), PreparedTransformInterpolation{});
+    preparedTransformState.assign(s_currentFrameTransforms.size(), 0);
+    preparedPairs.clear();
     preparedPairs.reserve(s_pendingUniformInterpolations.size() * 2);
 
     const auto appendPreparedPair = [&](const Mat3x4<float>& previousPosition,

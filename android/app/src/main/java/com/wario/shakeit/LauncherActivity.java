@@ -303,8 +303,8 @@ public class LauncherActivity extends Activity {
                 t("Desactivada puede haber cortes en la imagen.", "Off can show tearing."));
         section(t("Superposición", "Overlay"));
         row(t("Velocidad de imagen (FPS)", "Frame rate"), frameRatePicker());
-        info(t("120 y 180 FPS interpolan cuadros (experimental). El juego sigue marcando su ritmo de 60 Hz.",
-               "120 and 180 FPS interpolate frames (experimental). The game keeps its 60 Hz timing."), MUTED);
+        info(t("120 FPS interpola cuadros (experimental). El juego sigue marcando su ritmo de 60 Hz.",
+               "120 FPS interpolates frames (experimental). The game keeps its 60 Hz timing."), MUTED);
         check(t("Mostrar FPS", "Show FPS"), "video", "show_fps", false, null);
         check(t("Gráfica de tiempo por cuadro", "Frame time graph"), "video", "frame_graph", false,
                 t("Útil para ver tirones.", "Useful to spot stutter."));
@@ -550,10 +550,10 @@ public class LauncherActivity extends Activity {
     }
 
     private View frameRatePicker() {
-        // 0 = 60 FPS (the game's own rate), 120 and 180 = frame interpolation, as on PC. Written to
+        // 0 = 60 FPS (the game's own rate), 120 = frame interpolation. Written to
         // [video] frame_interpolation_fps; the runtime reads it when the game starts.
-        final int[] values = {0, 120, 180};
-        String[] labels = {t("60 FPS (original)", "60 FPS (original)"), "120 FPS", "180 FPS"};
+        final int[] values = {0, 120};
+        String[] labels = {t("60 FPS (original)", "60 FPS (original)"), "120 FPS"};
         int current = getInt("video", "frame_interpolation_fps", 0);
         int index = 0;
         for (int i = 0; i < values.length; i++) {

@@ -197,10 +197,9 @@ inline bool IsSupportedDisplayMode(std::string_view value) {
     return std::find(values.begin(), values.end(), value) != values.end();
 }
 
-// 240 was offered by an early build and is no longer supported; a saved 240 is
-// migrated to 180 at the parse site.
+// 180 and 240 are no longer supported; saved values of either are migrated to 120 at the parse site.
 inline bool IsSupportedFrameInterpolationFps(uint32_t value) {
-    return value == 0 || value == 120 || value == 180;
+    return value == 0 || value == 120;
 }
 
 inline std::optional<std::filesystem::path> ExecutableDirectory() {
@@ -400,7 +399,7 @@ inline void EnsureConfigFile() {
 #else
               "resolution_multiplier = 2.25\n"
 #endif
-              "# 0 (off), 120 or 180\n"
+              "# 0 (off) or 120\n"
               "frame_interpolation_fps = 0\n"
               "# wait for the display when presenting: no screen tearing\n"
               "vsync = true\n"
@@ -587,7 +586,8 @@ inline RuntimeUserConfig ParseConfigDocument(const toml::value& document) {
         config.displayMode = *value;
     }
     if (auto value = FindConfigUint(document, "video", "frame_interpolation_fps")) {
-        const uint32_t migrated = *value == 240u ? 180u : *value;
+        // 180 and 240 are no longer offered; a saved one becomes 120, the closest supported target.
+        const uint32_t migrated = (*value == 180u || *value == 240u) ? 120u : *value;
         if (IsSupportedFrameInterpolationFps(migrated)) {
             config.frameInterpolationFps = migrated;
         }

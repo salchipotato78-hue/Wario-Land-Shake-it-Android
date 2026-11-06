@@ -29,7 +29,7 @@ public class WarioApplication extends Application {
     }
 
     // Bump when the files under runtime/assets change, so installs unpack them again.
-    private static final String RUNTIME_STAMP = "unpacked-2";
+    private static final String RUNTIME_STAMP = "unpacked-3";
 
     @Override
     public void onCreate() {
@@ -94,6 +94,10 @@ public class WarioApplication extends Application {
             // desktop build copies it there). Without it, NAND init fails with "Unable to initialize
             // managed NAND", so place the assets in that folder too.
             copyAssets(context, "wii", new File(root, "wii_bootstrap"));
+            // Aurora looks for initial_pipeline_cache.db directly in the runtime folder, but the asset lives
+            // under pipeline/ and the copy above keeps that folder. Without this copy the 1156 precompiled
+            // shaders never load and every new effect or screen compiles its pipeline on first use (stutter).
+            copyAssets(context, "pipeline/initial_pipeline_cache.db", new File(root, "initial_pipeline_cache.db"));
             stamp.createNewFile();
         }
         return root;

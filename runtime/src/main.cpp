@@ -932,9 +932,12 @@ void RuntimeAuroraLogCallback(AuroraLogLevel level, const char* module,
                               const char* message, unsigned int len) {
     const std::string_view moduleView = module != nullptr ? std::string_view(module) : std::string_view{};
     const std::string_view messageView = message != nullptr ? std::string_view(message, len) : std::string_view{};
+    // '\n' rather than std::endl: endl flushes stderr on every line, and the log is written from the
+    // frame and worker threads. Fatal lines are flushed explicitly below.
     std::cerr << "[aurora] [" << static_cast<int>(level) << "] [" << moduleView << "] "
-              << messageView << std::endl;
+              << messageView << '\n';
     if (level == LOG_FATAL) {
+        std::cerr.flush();
         ShowRuntimeFatalPopup("Aurora reported a fatal renderer error", messageView);
     }
 }
@@ -1536,7 +1539,9 @@ int RuntimeMain(int argc, char** argv) {
             auroraConfig.resourcesPath = auroraResourcesPath.c_str();
         }
         auroraConfig.logCallback = &RuntimeAuroraLogCallback;
-        auroraConfig.logLevel = LOG_DEBUG;
+        // Info by default: debug lines are formatted and written even when nobody reads them. Set
+        // WARIO_LOG_DEBUG=1 (env) when diagnosing a problem.
+        auroraConfig.logLevel = std::getenv("WARIO_LOG_DEBUG") != nullptr ? LOG_DEBUG : LOG_INFO;
         // NSMBW display settings: aspect_mode, else the older widescreen/force_16_9 keys.
         DisplaySettings::Settings displaySettings;
         // Android defaults to a centered 16:9 picture (black bars on wide screens, nothing cut off).
