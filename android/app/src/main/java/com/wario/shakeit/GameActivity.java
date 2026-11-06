@@ -12,7 +12,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
 import android.os.Process;
 import android.view.Choreographer;
 import android.view.Display;
@@ -56,8 +55,6 @@ public class GameActivity extends SDLActivity {
     public static native void nativeSetTouchState(int buttons, boolean shake, float tilt);
     public static native void nativeApplyDisplaySettings(int aspect, float renderScale, boolean showFps);
     public static native void nativeSetDisplayClock(long vblankNanos, double hz);
-    public static native void nativeReportThermalHeadroom(float headroom);
-    public static native void nativeSetThermalAutoQuality(boolean enabled);
     public static native void nativeSetPhoneAccel(float x, float y, float z, boolean valid);
     public static native void nativeSetTouchAim(float x, float y, float viewWidth, float viewHeight);
 
@@ -188,11 +185,6 @@ public class GameActivity extends SDLActivity {
         // 120 or 180 FPS frame interpolation needs a display that runs that fast: ask for its mode.
         requestDisplayRate(configInt("video", "frame_interpolation_fps", 0));
 
-        // Keep clocks steadier through a long session on a phone that heats up.
-        getWindow().setSustainedPerformanceMode(true);
-        // Lower the render resolution when the phone runs hot, rather than letting the SoC throttle.
-        nativeSetThermalAutoQuality(configBool("video", "thermal_auto_quality", true));
-
         overlay = new TouchOverlay(this);
         addContentView(overlay, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
@@ -213,9 +205,9 @@ public class GameActivity extends SDLActivity {
     private float configRenderScale() {
         try {
             String v = DataImporter.readSetting(SetupActivity.configFile(this), "video", "resolution_multiplier");
-            return v == null ? 0f : Float.parseFloat(v.trim());
+            return v == null ? 1.5f : Float.parseFloat(v.trim());
         } catch (IOException | RuntimeException e) {
-            return 0f;
+            return 1.5f;
         }
     }
 
@@ -344,53 +336,6 @@ public class GameActivity extends SDLActivity {
         super.onResume();
         startDisplayClock();
         startPhoneMotion();
-        startThermalMonitor();
-    }
-
-    // Thermal headroom is polled about every ten seconds: the platform rate-limits the call and
-    // returns NaN when asked faster than about once a second.
-    private static final long THERMAL_POLL_MS = 10_000L;
-    private boolean thermalOn;
-    private final Runnable thermalTick = new Runnable() {
-        @Override
-        public void run() {
-            if (!thermalOn) {
-                return;
-            }
-            sampleThermal();
-            handler.postDelayed(this, THERMAL_POLL_MS);
-        }
-    };
-
-    private void startThermalMonitor() {
-        if (thermalOn) {
-            return;
-        }
-        thermalOn = true;
-        handler.postDelayed(thermalTick, THERMAL_POLL_MS);
-    }
-
-    private void stopThermalMonitor() {
-        thermalOn = false;
-        handler.removeCallbacks(thermalTick);
-    }
-
-    private void sampleThermal() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return; // getThermalHeadroom is API 31; older devices keep the player's resolution.
-        }
-        PowerManager power = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (power == null) {
-            return;
-        }
-        try {
-            float headroom = power.getThermalHeadroom(0);
-            if (!Float.isNaN(headroom) && headroom > 0f) {
-                nativeReportThermalHeadroom(headroom);
-            }
-        } catch (RuntimeException e) {
-            // The device cannot report headroom right now; leave quality where it is.
-        }
     }
 
     private void startPhoneMotion() {
@@ -441,7 +386,6 @@ public class GameActivity extends SDLActivity {
         }
         displayClockOn = false;
         stopPhoneMotion();
-        stopThermalMonitor();
         super.onPause();
     }
 

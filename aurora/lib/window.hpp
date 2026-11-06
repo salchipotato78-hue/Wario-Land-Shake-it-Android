@@ -59,8 +59,6 @@ void set_frame_buffer_lines(float lines);
 // A line target is set: the render target may be smaller than the EFB workspace (below 1x).
 bool frame_buffer_line_target() noexcept;
 void set_frame_buffer_aspect_fit(bool fit);
-// Pixel-count factor from the thermal policy (0.25..1); 1 leaves the size alone.
-void set_thermal_render_factor(float factor);
 // Fixed content aspect (16:9, 2.39:1 ...) with bars on surfaces of another shape; 0 = off.
 void set_fixed_aspect(float aspect);
 void set_present_surface_fill(bool fill);

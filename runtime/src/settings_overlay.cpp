@@ -185,7 +185,8 @@ constexpr uint64_t kStrapTransitionCoverFrames = 60;
 std::atomic_bool g_bootShadersReady = false;
 bool g_bootShaderNotice = false;
 Clock::time_point g_bootShaderWaitStart{};
-constexpr uint32_t kBootShaderNoticeThreshold = 100;
+uint32_t g_bootShaderTotal = 0;
+constexpr uint32_t kBootShaderNoticeThreshold = 0;  // show the progress bar for any boot compile
 constexpr auto kBootShaderWaitLimit = std::chrono::minutes(3);
 
 // Render heights: 1x is 480 lines in every aspect (DisplaySettings), the width follows the aspect.
@@ -232,9 +233,18 @@ void SetAspectMode(int32_t mode) {
 }
 
 void LimitResolutionForFrameRate() {
+#if defined(__ANDROID__)
+    // Each interpolated frame re-renders the whole scene, so the cost grows with pixels x frames.
+    // Auto (0) follows the screen, which is usually 1080p or more: cap it at 720p as well.
+    constexpr float kAndroidHighFpsMaxScale = 1.5f;
+    if (IsHighFrameRateMode() && (g_resolutionScale <= 0.0f || g_resolutionScale > kAndroidHighFpsMaxScale)) {
+        SetResolutionScale(kAndroidHighFpsMaxScale);
+    }
+#else
     if (IsHighFrameRateMode() && IsHighResolutionScale(g_resolutionScale)) {
         SetResolutionScale(4.0f);
     }
+#endif
 }
 
 using ControllerNames::FindNativeButton;
@@ -1309,6 +1319,28 @@ void DrawShaderCompilationStatus() {
     ImGui::PopStyleVar();
 }
 
+// Progress of the boot shader prewarm: a bar and "done / total" over the startup screen.
+void DrawBootShaderProgress(const ImGuiViewport* viewport) {
+    const uint32_t total = g_bootShaderTotal;
+    const uint32_t queued = aurora_get_queued_pipeline_count();
+    const uint32_t done = total > queued ? total - queued : 0;
+    const float fraction = std::min(1.0f, static_cast<float>(done) / static_cast<float>(total));
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    const float barWidth = std::min(440.0f, viewport->Size.x * 0.6f);
+    const float barHeight = 12.0f;
+    const float x0 = viewport->Pos.x + (viewport->Size.x - barWidth) * 0.5f;
+    const float y0 = viewport->Pos.y + viewport->Size.y * 0.80f;
+    list->AddRect(ImVec2(x0 - 2.0f, y0 - 2.0f), ImVec2(x0 + barWidth + 2.0f, y0 + barHeight + 2.0f),
+                  IM_COL32(255, 255, 255, 170), 0.0f, 0, 1.5f);
+    list->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + barWidth * fraction, y0 + barHeight),
+                        IM_COL32(255, 210, 74, 255));
+    char label[96] = {};
+    std::snprintf(label, sizeof(label), "Preparando shaders: %u / %u", done, total);
+    const ImVec2 labelSize = ImGui::CalcTextSize(label);
+    list->AddText(ImVec2(viewport->Pos.x + (viewport->Size.x - labelSize.x) * 0.5f, y0 - labelSize.y - 8.0f),
+                  IM_COL32(255, 255, 255, 255), label);
+}
+
 void DrawStartupScreen() {
     if (!StartupScreenVisible()) {
         return;
@@ -1340,7 +1372,9 @@ void DrawStartupScreen() {
         float titleHeight = ImGui::GetTextLineHeight();
         const bool gameFonts = GameLayout::FontReady(pmFont.get());
         char shaderLine[96] = {};
-        if (g_bootShaderNotice && !g_bootShadersReady.load(std::memory_order_relaxed)) {
+        const bool bootProgress = g_bootShaderNotice && !g_bootShadersReady.load(std::memory_order_relaxed) &&
+                                  g_bootShaderTotal > 0;
+        if (g_bootShaderNotice && !bootProgress && !g_bootShadersReady.load(std::memory_order_relaxed)) {
             std::snprintf(shaderLine, sizeof(shaderLine), "Compiling shaders... %u to go",
                           aurora_get_queued_pipeline_count());
         }
@@ -1553,6 +1587,9 @@ void DrawStartupScreen() {
             ImGui::SetCursorPos(ImVec2(lineX, startY + titleSize.y * 1.8f));
             ImGui::TextUnformatted(shaderLine);
         }
+        if (bootProgress) {
+            DrawBootShaderProgress(viewport);
+        }
     }
     ImGui::End();
     ImGui::PopStyleVar();
@@ -1568,6 +1605,7 @@ void UpdateBootShaderState() {
         g_bootShaderWaitStart = now;
     }
     const uint32_t queued = aurora_get_queued_pipeline_count();
+    g_bootShaderTotal = std::max(g_bootShaderTotal, aurora_get_prewarm_total());
     g_bootShaderNotice |= queued > kBootShaderNoticeThreshold;
     if (queued == 0 || now - g_bootShaderWaitStart > kBootShaderWaitLimit) {
         g_bootShadersReady.store(true, std::memory_order_release);

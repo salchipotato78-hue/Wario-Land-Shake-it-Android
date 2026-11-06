@@ -948,7 +948,7 @@ static void pipeline_cache_writer() {
 // Dawn blob cache served it. Logged once, when the launch queue first drains.
 static std::atomic_bool g_prewarmActive{false};
 static std::chrono::steady_clock::time_point g_prewarmStart{};
-static uint32_t g_prewarmCount = 0;
+static std::atomic<uint32_t> g_prewarmCount{0};
 
 static void note_pipeline_queue_drained() {
   if (!g_prewarmActive.exchange(false, std::memory_order_acq_rel)) {
@@ -963,7 +963,7 @@ static void note_pipeline_queue_drained() {
   const auto stats = webgpu::blob_cache_stats();
   Log.info("Pipeline prewarm finished: {} pipelines in {:.1f} s (Dawn blob cache: {}/{} hits, {} stores, {:.1f} MiB "
            "loaded)",
-           g_prewarmCount, elapsed.count() / 1000.0, stats.hits, stats.lookups, stats.stores,
+           g_prewarmCount.load(), elapsed.count() / 1000.0, stats.hits, stats.lookups, stats.stores,
            static_cast<double>(stats.hitBytes) / (1024.0 * 1024.0));
 }
 
@@ -1302,3 +1302,5 @@ void aurora_set_skip_unready_pipelines(const bool enabled) { aurora::gfx::set_sk
 bool aurora_get_skip_unready_pipelines() { return aurora::gfx::skip_unready_pipelines(); }
 
 uint32_t aurora_get_queued_pipeline_count() { return aurora::gfx::queued_pipeline_count(); }
+
+uint32_t aurora_get_prewarm_total() { return aurora::gfx::g_prewarmCount.load(std::memory_order_relaxed); }

@@ -80,14 +80,14 @@ uint32_t aurora_get_frame_interpolation_fps();
 void aurora_set_skip_unready_pipelines(bool enabled);
 bool aurora_get_skip_unready_pipelines();
 uint32_t aurora_get_queued_pipeline_count();
+// Pipelines queued by the boot prewarm (the total the startup progress bar counts down from).
+uint32_t aurora_get_prewarm_total();
 
-// Android only: enables or disables the asynchronous frame submission worker (on by default; the
-// GL/GLES backend always runs without it). Set before the first frame; Config.toml
-// [video] android_frame_worker.
+// Android only: enables or disables the asynchronous frame submission worker. On by default, as on
+// PC: it overlaps frame preparation with GPU submission, which is where the extra FPS comes from.
+// Must be set before the first frame; Config.toml [video] android_frame_worker = false turns it off
+// if a device shows a black screen.
 void aurora_set_android_frame_worker(bool enabled);
-
-// Scales the render target by a thermal factor (0.25..1). Used by the runtime's thermal quality policy.
-void aurora_set_thermal_render_factor(float factor);
 
 // Controls whether display copies bypass the Wii's vertical copy filter.
 void aurora_set_disable_copy_filter(bool disabled);

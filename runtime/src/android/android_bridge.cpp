@@ -5,7 +5,6 @@
 #include "graphics_info.h"
 #include "runtime_config.h"
 #include "settings_overlay.h"
-#include "thermal_quality.h"
 extern "C" uint32_t WarioHostSkipButtons();
 extern "C" void WarioIntroButtons(uint32_t hold);
 extern "C" void WarioSetAndroidDisplayClock(int64_t vblankNanos, double hz);  // hle/vi.cpp
@@ -93,19 +92,6 @@ JNIEXPORT void JNICALL Java_com_wario_shakeit_GameActivity_nativeSetDisplayClock
     JNIEnv*, jclass, jlong vblankNanos, jdouble hz)
 {
     WarioSetAndroidDisplayClock(static_cast<int64_t>(vblankNanos), static_cast<double>(hz));
-}
-
-// GameActivity.nativeReportThermalHeadroom: PowerManager.getThermalHeadroom (API 31+), polled about
-// every ten seconds from the UI thread. >= 1.0 means throttling is imminent; see thermal_quality.h.
-JNIEXPORT void JNICALL Java_com_wario_shakeit_GameActivity_nativeReportThermalHeadroom(JNIEnv*, jclass, jfloat headroom)
-{
-    ThermalQuality::ReportHeadroom(static_cast<float>(headroom));
-}
-
-// GameActivity.nativeSetThermalAutoQuality: the video.thermal_auto_quality setting.
-JNIEXPORT void JNICALL Java_com_wario_shakeit_GameActivity_nativeSetThermalAutoQuality(JNIEnv*, jclass, jboolean enabled)
-{
-    ThermalQuality::SetEnabled(enabled == JNI_TRUE);
 }
 
 // GameActivity.nativeGraphicsInfo: the GPU the game is drawing with and whether the GPU

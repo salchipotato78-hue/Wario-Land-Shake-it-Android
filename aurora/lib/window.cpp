@@ -48,9 +48,6 @@ Module Log("aurora::window");
 SDL_Window* g_window;
 SDL_Renderer* g_renderer;
 float g_frameBufferScale = 0.f;
-// Thermal quality factor (1 = full). Lowers the render target's pixel count while the phone is hot;
-// see ThermalQuality in the runtime. Applied last, so it scales whatever the user's setting chose.
-float g_thermalRenderFactor = 1.f;
 // Render height in lines (VISetFrameBufferLines); 0 leaves the size to g_frameBufferScale.
 float g_frameBufferLines = 0.f;
 bool g_frameBufferAspectFit = true;
@@ -591,16 +588,6 @@ AuroraWindowSize get_window_size() {
     fb_h = scaledH;
   }
 
-  if (g_thermalRenderFactor < 1.f) {
-    // The thermal policy may lower the render target, but never below the game's own size, and never
-    // above what the player chose: a line target can legitimately sit below 1x, and heat must not
-    // raise it back up to the native size.
-    const int floorW = baseW > 0 ? std::min(fb_w, static_cast<int>(baseW)) : 1;
-    const int floorH = baseH > 0 ? std::min(fb_h, static_cast<int>(baseH)) : 1;
-    fb_w = std::max(floorW, static_cast<int>(std::lround(static_cast<float>(fb_w) * g_thermalRenderFactor)));
-    fb_h = std::max(floorH, static_cast<int>(std::lround(static_cast<float>(fb_h) * g_thermalRenderFactor)));
-  }
-
   const float scale = SDL_GetWindowDisplayScale(g_window);
   return {
       .width = static_cast<uint32_t>(width),
@@ -819,15 +806,6 @@ void set_frame_buffer_lines(float lines) {
 }
 
 bool frame_buffer_line_target() noexcept { return g_frameBufferLines > 0.f; }
-
-void set_thermal_render_factor(float factor) {
-  factor = std::clamp(factor, 0.25f, 1.f);
-  if (g_thermalRenderFactor == factor) {
-    return;
-  }
-  g_thermalRenderFactor = factor;
-  request_frame_buffer_resize();
-}
 
 void set_frame_buffer_aspect_fit(bool fit) {
   if (g_frameBufferAspectFit == fit) {

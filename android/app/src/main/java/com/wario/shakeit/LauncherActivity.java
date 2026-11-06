@@ -253,7 +253,7 @@ public class LauncherActivity extends Activity {
     private void updateStatus() {
         int aspect = getInt("video", "aspect_mode", 1);
         String aspectText = aspect == 0 ? "4:3" : aspect == 1 ? "16:9" : aspect == 3 ? "2.39:1" : t("llenar", "fill");
-        double scale = getDouble("video", "resolution_multiplier", 0.0);
+        double scale = getDouble("video", "resolution_multiplier", 1.5);
         String res = scale <= 0 ? t("resolución automática", "auto resolution")
                 : (int) Math.round(480 * scale) + "p";
         status.setText(res + "  ·  " + aspectText + "  ·  " + t("pantalla completa", "fullscreen")
@@ -574,7 +574,7 @@ public class LauncherActivity extends Activity {
             t("Automática (según la ventana)", "Automatic (follows the window)"),
             t("480p (original)", "480p (original)"), "720p", "1080p (Full HD)", "1440p (2K)",
         };
-        double current = getDouble("video", "resolution_multiplier", 0.0);
+        double current = getDouble("video", "resolution_multiplier", 1.5);
         int index = 0;
         for (int i = 0; i < values.length; i++) {
             if (Math.abs(values[i] - current) < 0.001) {

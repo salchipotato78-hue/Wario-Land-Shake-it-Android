@@ -394,8 +394,13 @@ inline void EnsureConfigFile() {
               "widescreen = true\n"
               "force_16_9 = false\n"
               "# render height = 480 x resolution_multiplier: 1.5 = 720p, 2.25 = 1080p, 4.5 = 4K, 0 = screen size\n"
+#if defined(__ANDROID__)
+              // Phones: 720p by default. Each frame costs pixels, and interpolation draws the scene again.
+              "resolution_multiplier = 1.5\n"
+#else
               "resolution_multiplier = 2.25\n"
-              "# 0 (off) or 120\n"
+#endif
+              "# 0 (off), 120 or 180\n"
               "frame_interpolation_fps = 0\n"
               "# wait for the display when presenting: no screen tearing\n"
               "vsync = true\n"
@@ -404,7 +409,8 @@ inline void EnsureConfigFile() {
               "display_mode = \"borderless\"\n"
               "graphics_api = \"auto\"\n"
               "skip_unready_pipelines = true\n"
-              "# Android only: asynchronous frame submission worker (GL/GLES always runs without it).\n"
+              "# Android only: asynchronous frame submission worker (on by default, as on PC).\n"
+              "# Set to false if the screen stays black on your device.\n"
               "android_frame_worker = true\n"
               "disable_copy_filter = true\n"
               "show_fps = false\n"

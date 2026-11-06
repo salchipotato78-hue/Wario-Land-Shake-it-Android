@@ -269,7 +269,12 @@ std::atomic_bool s_dropInterpolationAtSeal{false};
 // hysteresis, so a scene that can sustain N slots settles there instead of flapping.
 std::atomic_uint32_t s_pacingWindowFrames{0};
 std::atomic_uint32_t s_pacingWindowMisses{0};
+#if defined(__ANDROID__)
+// Phones overrun the retrace budget in bursts; a shorter window backs off within ~0.33 s.
+constexpr uint32_t kPacingWindowFrames = 20;
+#else
 constexpr uint32_t kPacingWindowFrames = 60; // ~1 second of guest frames
+#endif
 constexpr uint32_t kPacingReducePercent = 75;
 constexpr uint32_t kPacingRestorePercent = 25;
 constexpr uint32_t kPacingMinimumSamples = 1;

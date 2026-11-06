@@ -258,19 +258,13 @@ struct FrameWorkerState {
 
 FrameWorkerState g_frameWorker;
 
-// On by default on Android. OpenGL ES is excluded below (its EGL context cannot move between threads).
 std::atomic<bool> g_androidFrameWorkerOptIn{true};
 
 bool frame_worker_requested() noexcept {
 #ifdef AURORA_ENABLE_GX
 #if defined(__ANDROID__)
   // Checked on every call rather than cached, because the runtime sets the opt-in from Config.toml
-  // after startup. Dawn's GL/GLES backend binds its one EGL context to the thread that uses it, so
-  // a second thread cannot touch the device there; every other backend encodes off the main thread.
-  if (webgpu::g_backendType == wgpu::BackendType::OpenGL ||
-      webgpu::g_backendType == wgpu::BackendType::OpenGLES) {
-    return false;
-  }
+  // after startup. Off unless the player enabled it.
   return g_androidFrameWorkerOptIn.load(std::memory_order_acquire);
 #endif
   static const bool enabled = [] {
@@ -1557,6 +1551,46 @@ struct SealedFrameContext {
   bool metalfxEnabled = false;
 };
 
+#if defined(__ANDROID__)
+// Android replay governor. Each interpolated slot re-renders the whole scene, which is the expensive part of
+// frame interpolation on phones. When the encode runs over budget for a few frames in a row, the interpolated
+// slots switch to copies of the native frame (no extra scene work) until the encode is cheap again.
+// Touched only by the frame worker, the same thread that seals and encodes with interpolation on.
+struct ReplayGovernor {
+  bool duplicating = false;
+  uint32_t overBudget = 0;
+  uint32_t underBudget = 0;
+};
+ReplayGovernor g_replayGovernor;
+constexpr uint32_t kReplayOverBudgetFrames = 3;
+constexpr uint32_t kReplayRestoreFrames = 60;
+
+bool replay_governor_duplicates() noexcept { return g_replayGovernor.duplicating; }
+
+void replay_governor_observe(double encodeMs, uint64_t intervalNanos) noexcept {
+  // The schedule interval is one guest frame; slots split it, so the whole encode has to fit in ~75% of it.
+  const double frameMs = intervalNanos != 0 ? static_cast<double>(intervalNanos) / 1.0e6 : 16.7;
+  const double budgetMs = frameMs * 0.75;
+  if (encodeMs > budgetMs) {
+    ++g_replayGovernor.overBudget;
+    g_replayGovernor.underBudget = 0;
+  } else {
+    ++g_replayGovernor.underBudget;
+    g_replayGovernor.overBudget = 0;
+  }
+  if (!g_replayGovernor.duplicating && g_replayGovernor.overBudget >= kReplayOverBudgetFrames) {
+    g_replayGovernor.duplicating = true;
+    g_replayGovernor.underBudget = 0;
+    Log.info("Interpolated slots reuse the native frame: encode {:.1f} ms over the {:.1f} ms budget", encodeMs,
+             budgetMs);
+  } else if (g_replayGovernor.duplicating && g_replayGovernor.underBudget >= kReplayRestoreFrames) {
+    g_replayGovernor.duplicating = false;
+    g_replayGovernor.overBudget = 0;
+    Log.info("Interpolated slots re-render the scene again: encode is back under budget");
+  }
+}
+#endif
+
 // Phase 1: everything that touches producer-shared renderer state. Needs g_rendererGpuMutex and
 // a FIFO already drained into the recorded pass list.
 void seal_frame_locked(gfx::SealedFrame& sealedFrame, SealedFrameContext& ctx) {
@@ -1576,6 +1610,11 @@ void seal_frame_locked(gfx::SealedFrame& sealedFrame, SealedFrameContext& ctx) {
   ctx.interpolatedFrameCount = gx::interpolated_frame_count();
   ctx.interpolationActive = ctx.interpolatedFrameCount != 0;
   ctx.replayInterpolatedFrames = ctx.interpolationActive && gx::frame_interpolation_replay_safe();
+#if defined(__ANDROID__)
+  if (ctx.replayInterpolatedFrames && replay_governor_duplicates()) {
+    ctx.replayInterpolatedFrames = false;
+  }
+#endif
   ctx.scheduleBaseNanos = g_presentScheduleBaseNanos.load(std::memory_order_acquire);
   ctx.scheduleIntervalNanos = g_presentScheduleIntervalNanos.load(std::memory_order_acquire);
   const auto windowSize = window::get_window_size();
@@ -1887,7 +1926,14 @@ bool run_frame_worker_cycle(gfx::SealedFrame& sealedFrame) noexcept {
   if (overlapEncode) {
     // Mutex-free: the producer drains and records the next frame in parallel, taking the renderer
     // mutex per drain, and this phase never takes it.
+    const auto encodeStart = WorkerClock::now();
     presentationJobs = encode_sealed_frame(sealedFrame, ctx);
+#if defined(__ANDROID__)
+    replay_governor_observe(std::chrono::duration<double, std::milli>(WorkerClock::now() - encodeStart).count(),
+                            ctx.scheduleIntervalNanos);
+#else
+    (void)encodeStart;
+#endif
     publish_presentations(std::move(presentationJobs), ctx.interpolationActive);
     if (imguiNewFrameOwed) {
       // Safe only now: every slot has replayed this frame's ImGui draw lists.
@@ -2223,5 +2269,3 @@ AuroraMetalFXStatus aurora_get_metalfx_status() { return aurora::g_metalfxStatus
 void aurora_set_android_frame_worker(bool enabled) {
   aurora::g_androidFrameWorkerOptIn.store(enabled, std::memory_order_release);
 }
-
-void aurora_set_thermal_render_factor(float factor) { aurora::window::set_thermal_render_factor(factor); }
