@@ -1,8 +1,7 @@
 #include "thermal_quality.h"
 
+#include "display_settings.h"
 #include "runtime_log.h"
-
-#include <aurora/gfx.h>
 
 #include <array>
 #include <atomic>
@@ -30,7 +29,9 @@ int g_coolReports = 0;
 void ApplyStep(size_t step) noexcept {
     const float factor = kFactors[step];
     g_step.store(step, std::memory_order_relaxed);
-    aurora_set_thermal_render_factor(factor);
+    // The factor is applied to the render lines by DisplaySettings, the one owner of the render
+    // resolution, at the next frame boundary.
+    DisplaySettings::RefreshRenderer();
     RT_LOGF(RT_TAG_RUNTIME, "thermal: render scale factor now %.2f (step %zu)\n",
             static_cast<double>(factor), step);
 }

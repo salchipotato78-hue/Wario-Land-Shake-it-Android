@@ -3,6 +3,7 @@
 
 #include "memory.h"
 #include "runtime_log.h"
+#include "thermal_quality.h"
 
 #include <dolphin/gx/GXAurora.h>
 #include <dolphin/vi.h>
@@ -70,10 +71,13 @@ void ApplyRenderer(const Settings& settings) {
         VIUnlockAspectRatio();
         AuroraSetViewportPolicy(AURORA_VIEWPORT_STRETCH);
     }
-    VISetFrameBufferLines(RenderLines(settings.renderScale, aspect));
-    RT_LOGF(RT_TAG_VI, "display: aspect %d%s, render %.0f lines (%.2gx), surface %ux%u\n", aspect,
-            aspect != settings.aspect ? " (game booted in 4:3)" : "", RenderLines(settings.renderScale, aspect),
-            settings.renderScale, g_surfaceWidth, g_surfaceHeight);
+    // The thermal factor scales the picture's lines only; the user's setting is never changed.
+    const float thermal = ThermalQuality::CurrentFactor();
+    const float lines = RenderLines(settings.renderScale, aspect) * thermal;
+    VISetFrameBufferLines(lines);
+    RT_LOGF(RT_TAG_VI, "display: aspect %d%s, render %.0f lines (%.2gx, thermal %.2f), surface %ux%u\n", aspect,
+            aspect != settings.aspect ? " (game booted in 4:3)" : "", lines, settings.renderScale,
+            static_cast<double>(thermal), g_surfaceWidth, g_surfaceHeight);
 }
 
 // Fill: widen the game's 16:9 canvas to the surface (Hor+), keeping the game's own pixel aspect
@@ -115,6 +119,11 @@ void Request(const Settings& settings) {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_pending = Lockstep(settings);
     g_hasPending = true;
+}
+
+void RefreshRenderer() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_rendererDirty = true;
 }
 
 void OnFrameBoundary(uint32_t surfaceWidth, uint32_t surfaceHeight) {

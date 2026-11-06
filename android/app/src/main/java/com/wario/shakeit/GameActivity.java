@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.Process;
 import android.view.Choreographer;
 import android.view.Display;
@@ -55,6 +56,7 @@ public class GameActivity extends SDLActivity {
     public static native void nativeSetTouchState(int buttons, boolean shake, float tilt);
     public static native void nativeApplyDisplaySettings(int aspect, float renderScale, boolean showFps);
     public static native void nativeSetDisplayClock(long vblankNanos, double hz);
+    public static native void nativeReportThermalHeadroom(float headroom);
     public static native void nativeSetPhoneAccel(float x, float y, float z, boolean valid);
     public static native void nativeSetTouchAim(float x, float y, float viewWidth, float viewHeight);
 
@@ -135,6 +137,10 @@ public class GameActivity extends SDLActivity {
 
     private TouchOverlay overlay;
     private Choreographer.FrameCallback displayClock;
+    // Thermal headroom is polled about once a second (API 31+) on the same frame callback.
+    private static final long THERMAL_POLL_NANOS = 1_000_000_000L;
+    private long nextThermalPollNanos;
+    private PowerManager powerManager;
     private boolean displayClockOn;
     // True while a frame callback is queued with Choreographer. Keeps onPause/onResume from queuing a
     // second callback chain (which would call nativeSetDisplayClock twice per frame, forever).
@@ -319,6 +325,14 @@ public class GameActivity extends SDLActivity {
                     }
                     double hz = getWindowManager().getDefaultDisplay().getRefreshRate();
                     nativeSetDisplayClock(frameTimeNanos, hz);
+                    if (Build.VERSION.SDK_INT >= 31 && frameTimeNanos >= nextThermalPollNanos) {
+                        nextThermalPollNanos = frameTimeNanos + THERMAL_POLL_NANOS;
+                        if (powerManager == null) {
+                            powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                        }
+                        // NaN when the device cannot forecast; the runtime then leaves quality alone.
+                        nativeReportThermalHeadroom(powerManager.getThermalHeadroom(10));
+                    }
                     displayClockPending = true;
                     Choreographer.getInstance().postFrameCallback(this);
                 }

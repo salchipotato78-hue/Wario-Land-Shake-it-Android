@@ -5,6 +5,7 @@
 #include "graphics_info.h"
 #include "runtime_config.h"
 #include "settings_overlay.h"
+#include "thermal_quality.h"
 extern "C" uint32_t WarioHostSkipButtons();
 extern "C" void WarioIntroButtons(uint32_t hold);
 extern "C" void WarioSetAndroidDisplayClock(int64_t vblankNanos, double hz);  // hle/vi.cpp
@@ -84,6 +85,14 @@ JNIEXPORT void JNICALL Java_com_wario_shakeit_GameActivity_nativeApplyDisplaySet
     settings_overlay::SetAspect(aspect < 0 || aspect > 3 ? DisplaySettings::kAspectFill : static_cast<int32_t>(aspect));
     settings_overlay::SetRenderScale(renderScale >= 0.0f ? renderScale : 1.0f);
     settings_overlay::SetShowFps(showFps == JNI_TRUE);
+}
+
+// GameActivity.nativeReportThermalHeadroom: PowerManager.getThermalHeadroom, about once a second.
+// Around 1.0 means throttling is imminent; NaN means the device cannot tell (ignored by the runtime).
+JNIEXPORT void JNICALL Java_com_wario_shakeit_GameActivity_nativeReportThermalHeadroom(
+    JNIEnv*, jclass, jfloat headroom)
+{
+    ThermalQuality::ReportHeadroom(static_cast<float>(headroom));
 }
 
 // GameActivity.nativeSetDisplayClock: called on every display frame by the activity (Choreographer).

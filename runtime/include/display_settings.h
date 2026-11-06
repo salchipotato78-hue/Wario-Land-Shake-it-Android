@@ -36,6 +36,9 @@ void Request(const Settings& settings);
 // At every frame boundary on the game thread (after aurora_begin_frame): applies a pending request
 // to the renderer and keeps the game's widened canvas in step with the surface.
 void OnFrameBoundary(uint32_t surfaceWidth, uint32_t surfaceHeight);
+// From any thread (the thermal governor). Re-applies the render resolution at the next frame
+// boundary, so a change of the thermal render factor takes effect without a settings change.
+void RefreshRenderer();
 
 Settings Current();
 // Current() with any request not yet applied: what the next frame will use.

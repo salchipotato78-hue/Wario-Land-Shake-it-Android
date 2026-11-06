@@ -214,6 +214,12 @@ set_source_files_properties(${MKW_PPC_SEMANTIC_RUNTIME_SOURCES} PROPERTIES
     COMPILE_OPTIONS "${MKW_TRANSLATED_PPC_FP_OPTIONS}")
 # The NSMBW sampling profiler includes <windows.h>; keep it out of the unity batches.
 set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/src/guest_profiler.cpp" PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+# Thermal headroom is NaN on devices that cannot report it, and the guard that drops it is
+# `!(headroom > 0.0f)`. -ffinite-math-only (part of -ffast-math) may fold that check away, so this
+# file opts back out of the finite-math assumption, like frame_interpolation.cpp above.
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/src/thermal_quality.cpp" PROPERTIES
+    SKIP_UNITY_BUILD_INCLUSION ON
+    COMPILE_OPTIONS "-fno-finite-math-only")
 # Match the optimization policy of the translated callers as well as their FP policy.
 set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/src/ppc_quantized.cpp" APPEND PROPERTY
     COMPILE_OPTIONS -O2 -fno-slp-vectorize)
