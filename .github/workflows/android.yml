@@ -1,0 +1,247 @@
+# The game is not in this repository. The workflow reads sys/main.dol from a release named "game-data"
+# in this repo (asset "main.dol"). Optionally, a repository secret WARIO_DATA_URL can point to a direct
+# link to a zip of the DATA folder instead.
+name: Android APK
+
+# Builds Wario Land: Shake it! for Android (arm64-v8a) entirely on GitHub Actions.
+#
+# The game is not in this repository. Create a repository secret WARIO_DATA_URL that points to a
+# .zip of your own disc's DATA folder (it must contain sys/main.dol, sys/boot.bin and files/).
+# The main.dol checksum is verified below (US RWLE01, revision 0).
+
+on:
+  workflow_dispatch:
+    inputs:
+      reuse_translation:
+        description: "Reusar la última traducción guardada (rápido: solo regenera los shards con el runtime actual). Úsalo para cambios solo en runtime/; NO si cambió el juego, el traductor o projects/wario."
+        type: boolean
+        default: false
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      SDL_VERSION: "3.4.4"        # same as AURORA_SDL3_VERSION in aurora/CMakeLists.txt
+      NDK_VERSION: "27.0.12077973"
+      WARIO_JOBS: "4"
+      # ccache keeps the C/C++ objects of the translated game between runs (see the cache step below).
+      CCACHE_DIR: /home/runner/.cache/ccache-wario
+      CCACHE_MAXSIZE: "3G"
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      # Android SDK preinstalled on the ubuntu-24.04 runner image.
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space on the runner
+        # The translated runtime and its object files need more room than the default runner image leaves free.
+        run: |
+          echo "Antes:"; df -h /
+          sudo rm -rf /opt/ghc /usr/local/share/boost /usr/share/swift /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/share/az_* /usr/lib/google-cloud-sdk \
+            /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/system-images \
+            /usr/local/lib/android/sdk/emulator || true
+          sudo docker image prune --all --force || true
+          echo "Después:"; df -h /
+
+      # The NDK is about 1.5 GB. Cache it after the cleanup above (which removes the preinstalled NDK),
+      # so repeated runs restore it from the cache instead of downloading it again from Google.
+      - name: Cache NDK
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+          key: android-ndk-${{ env.NDK_VERSION }}
+
+      - name: Download and check main.dol
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WARIO_DATA_URL: ${{ secrets.WARIO_DATA_URL }}
+        run: |
+          set -e
+          mkdir -p /tmp/gamedata game
+          if [ -n "$WARIO_DATA_URL" ]; then
+            # Optional: a direct link (not Drive) to the zip.
+            URL="$WARIO_DATA_URL"
+            if [[ "$URL" == *drive.google.com* ]]; then
+              ID=$(echo "$URL" | sed -E 's/.*[?&]id=([^&]+).*/\1/; s#.*/d/([^/?]+).*#\1#')
+              URL="https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t"
+            fi
+            curl -fL --retry 3 -o /tmp/game.zip "$URL" || true
+          else
+            # Default: only sys/main.dol is uploaded (the build needs nothing else; the phone needs the full zip).
+            gh release download game-data -R "$GITHUB_REPOSITORY" -p "main.dol" -O game/main.dol \
+              || { echo "::error::No encuentro el release 'game-data' con el archivo main.dol. Sube ese archivo ahí (ver android/README.md)."; exit 1; }
+            echo "053be60dde84c8042f45ed2f4ba80c17efb2d20fedf95a414c2c7e37d336912a  game/main.dol" | sha256sum -c -
+            exit 0
+          fi
+          if ! unzip -tq /tmp/game.zip > /dev/null 2>&1; then
+            echo "::error::La descarga no es un zip válido."
+            if [ -f /tmp/game.zip ]; then
+              echo "Primeros bytes de lo recibido (si es HTML, Drive bloqueó la descarga):"
+              head -c 400 /tmp/game.zip | tr -s ' \n' ' ' || true
+              echo
+              grep -qi "quota\|too many users" /tmp/game.zip && echo "::error::Drive tiene la cuota de descargas agotada para este archivo. Usa un release (game-data.zip)."
+              grep -qi "virus\|scan" /tmp/game.zip && echo "::error::Drive pide confirmar el escaneo de virus. Usa un release (game-data.zip)."
+            fi
+            exit 1
+          fi
+          unzip -q /tmp/game.zip -d /tmp/gamedata
+          DOL=$(find /tmp/gamedata -path '*/sys/main.dol' | head -n 1)
+          if [ -z "$DOL" ]; then
+            echo "::error::No encuentro sys/main.dol dentro del zip."
+            exit 1
+          fi
+          cp "$DOL" game/main.dol
+          echo "053be60dde84c8042f45ed2f4ba80c17efb2d20fedf95a414c2c7e37d336912a  game/main.dol" | sha256sum -c -
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install SDK packages (platform, build-tools, NDK, CMake)
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -n 1)"
+          fi
+          echo "Usando $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          if [ -d "$ANDROID_HOME/ndk/${NDK_VERSION}" ]; then
+            # Restored from the cache: only the other packages are missing (or already present).
+            "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "cmake;3.31.6"
+          else
+            "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}" "cmake;3.31.6"
+          fi
+          # The runner sets ANDROID_NDK_HOME to its preinstalled NDK (which the cleanup step removed).
+          # Point every NDK variable at the NDK we just installed, so CMake links against it.
+          NDK_PATH="$ANDROID_HOME/ndk/${NDK_VERSION}"
+          {
+            echo "ANDROID_NDK_HOME=$NDK_PATH"
+            echo "ANDROID_NDK_ROOT=$NDK_PATH"
+            echo "ANDROID_NDK_LATEST_HOME=$NDK_PATH"
+            echo "ANDROID_NDK=$NDK_PATH"
+          } >> "$GITHUB_ENV"
+          # Some prebuilt dependency still links against an absolute NDK 29 path (liblog.so).
+          # Make that path resolve to the NDK 27 we use; the sysroot provides the same liblog.so for API 28.
+          sudo ln -sfn "$NDK_PATH" "$ANDROID_HOME/ndk/29.0.14206865"
+
+      # The translated code depends only on main.dol, the translator and the runtime sources,
+      # so a repeated run restores it instead of translating ~28k functions again.
+      - name: Restore translated code
+        id: gen
+        uses: actions/cache/restore@v4
+        with:
+          path: generated
+          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**', 'runtime/src/**') }}
+          # Fallback used only with reuse_translation: the newest translation saved by an earlier run.
+          restore-keys: |
+            translated-
+
+      # Full translation: only when there is no usable cache, or when reuse_translation is off and the key missed.
+      - name: Translate the game (WiiCompiled translator)
+        if: steps.gen.outputs.cache-hit != 'true' && (inputs.reuse_translation != true || steps.gen.outputs.cache-matched-key == '')
+        run: |
+          dotnet build fw/translator/src/Translator.Cli/Translator.Cli.csproj -c Release
+          TR="dotnet fw/translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll"
+          P=projects/wario/recomp.yml
+          mkdir -p generated
+          $TR translate-recursive 0x80006124 --project $P \
+            --outdir generated/functions \
+            --output-metadata generated/base_translation_output.json \
+            --production-source-bundle generated/base_translation_sources.bin \
+            --no-function-files --prune-stale --threads "$(nproc)"
+          $TR generate-data-init --project $P
+          $TR emit-build-shards --project $P \
+            --base-metadata generated/base_translation_output.json \
+            --base-functions-dir generated/functions \
+            --native-source-dir runtime/src \
+            --out generated/build_shards
+
+      # Fast path (reuse_translation=true): keep the restored translation and rebuild only the shards,
+      # which depend on runtime/src (native registration). Not saved back to the cache: the cache keeps
+      # translations that were produced from their own runtime version.
+      - name: Regenerate build shards with the current runtime (reuse_translation)
+        if: steps.gen.outputs.cache-hit != 'true' && inputs.reuse_translation == true && steps.gen.outputs.cache-matched-key != ''
+        run: |
+          echo "::notice::Reutilizando la traducción de la clave: ${{ steps.gen.outputs.cache-matched-key }}"
+          dotnet build fw/translator/src/Translator.Cli/Translator.Cli.csproj -c Release
+          TR="dotnet fw/translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll"
+          P=projects/wario/recomp.yml
+          $TR emit-build-shards --project $P \
+            --base-metadata generated/base_translation_output.json \
+            --base-functions-dir generated/functions \
+            --native-source-dir runtime/src \
+            --out generated/build_shards
+
+      - name: Save translated code
+        if: steps.gen.outputs.cache-hit != 'true' && inputs.reuse_translation != true
+        uses: actions/cache/save@v4
+        with:
+          path: generated
+          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**', 'runtime/src/**') }}
+
+      - name: Get the SDL3 Java glue (matches the SDL3 the runtime builds)
+        run: |
+          # Extract outside the workspace: SDL's own gradle-wrapper.jar would fail setup-gradle's validation.
+          mkdir -p /tmp/sdl
+          curl -fL -o /tmp/sdl/sdl.tar.gz "https://github.com/libsdl-org/SDL/archive/refs/tags/release-${SDL_VERSION}.tar.gz"
+          tar xzf /tmp/sdl/sdl.tar.gz -C /tmp/sdl
+          SRC="/tmp/sdl/SDL-release-${SDL_VERSION}/android-project/app/src/main/java/org/libsdl/app"
+          mkdir -p android/app/src/main/java/org/libsdl
+          cp -r "$SRC" android/app/src/main/java/org/libsdl/
+
+      - name: Install ccache
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ccache
+
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          # Each run restores the latest entry and saves its own below, so the cache keeps improving.
+          key: ccache-arm64-${{ github.run_id }}
+          restore-keys: |
+            ccache-arm64-
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build the APK
+        working-directory: android
+        env:
+          WARIO_CCACHE: "1"
+          # Diagnóstico: por qué ccache no acierta (ver el artefacto ccache-log).
+          CCACHE_LOGFILE: ${{ runner.temp }}/ccache.log
+        run: |
+          ccache --zero-stats
+          gradle :app:assembleRelease --no-daemon --stacktrace
+          ccache --show-stats
+
+      # Saved even when the build fails, so the objects compiled so far are reused on the next run.
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-arm64-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ccache-log
+          path: ${{ runner.temp }}/ccache.log
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wario-land-shake-it-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
