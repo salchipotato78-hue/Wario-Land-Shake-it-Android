@@ -217,8 +217,11 @@ set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/src/guest_profiler.cpp" P
 # Thermal headroom is NaN on devices that cannot report it, and the guard that drops it is
 # `!(headroom > 0.0f)`. -ffinite-math-only (part of -ffast-math) may fold that check away, so this
 # file opts back out of the finite-math assumption, like frame_interpolation.cpp above.
+# SKIP_PRECOMPILE_HEADERS: the shared PCH is built with -ffast-math, and clang refuses to use it
+# from a TU that disables that macro, so this file must not include it (same as the PPC sources above).
 set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/src/thermal_quality.cpp" PROPERTIES
     SKIP_UNITY_BUILD_INCLUSION ON
+    SKIP_PRECOMPILE_HEADERS ON
     COMPILE_OPTIONS "-fno-finite-math-only")
 # Match the optimization policy of the translated callers as well as their FP policy.
 set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/src/ppc_quantized.cpp" APPEND PROPERTY

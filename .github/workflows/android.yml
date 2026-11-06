@@ -24,7 +24,6 @@ jobs:
     env:
       SDL_VERSION: "3.4.4"        # same as AURORA_SDL3_VERSION in aurora/CMakeLists.txt
       NDK_VERSION: "27.0.12077973"
-      WARIO_JOBS: "4"
       # ccache keeps the C/C++ objects of the translated game between runs (see the cache step below).
       CCACHE_DIR: /home/runner/.cache/ccache-wario
       CCACHE_MAXSIZE: "3G"
@@ -34,6 +33,10 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
+
+      # Translated shards and ninja use every core of the runner (4 on ubuntu-24.04 today, more on larger runners).
+      - name: Set parallel jobs
+        run: echo "WARIO_JOBS=$(nproc)" >> "$GITHUB_ENV"
 
       - name: Free disk space on the runner
         # The translated runtime and its object files need more room than the default runner image leaves free.
@@ -132,14 +135,15 @@ jobs:
           # Make that path resolve to the NDK 27 we use; the sysroot provides the same liblog.so for API 28.
           sudo ln -sfn "$NDK_PATH" "$ANDROID_HOME/ndk/29.0.14206865"
 
-      # The translated code depends only on main.dol, the translator and the runtime sources,
-      # so a repeated run restores it instead of translating ~28k functions again.
+      # The translated code depends only on main.dol, the translator and the project files, so a repeated
+      # run restores it instead of translating ~28k functions again (about 4-5 minutes). Changes in runtime/src
+      # do not invalidate it: the build shards, the only part that reads runtime/src, are regenerated below.
       - name: Restore translated code
         id: gen
         uses: actions/cache/restore@v4
         with:
           path: generated
-          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**', 'runtime/src/**') }}
+          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**') }}
           # Fallback used only with reuse_translation: the newest translation saved by an earlier run.
           restore-keys: |
             translated-
@@ -180,12 +184,25 @@ jobs:
             --native-source-dir runtime/src \
             --out generated/build_shards
 
+      - name: Regenerate build shards (translation restored from cache)
+        if: steps.gen.outputs.cache-hit == 'true'
+        run: |
+          dotnet build fw/translator/src/Translator.Cli/Translator.Cli.csproj -c Release
+          TR="dotnet fw/translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll"
+          P=projects/wario/recomp.yml
+          rm -rf generated/build_shards
+          $TR emit-build-shards --project $P \
+            --base-metadata generated/base_translation_output.json \
+            --base-functions-dir generated/functions \
+            --native-source-dir runtime/src \
+            --out generated/build_shards
+
       - name: Save translated code
         if: steps.gen.outputs.cache-hit != 'true' && inputs.reuse_translation != true
         uses: actions/cache/save@v4
         with:
           path: generated
-          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**', 'runtime/src/**') }}
+          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**') }}
 
       - name: Get the SDL3 Java glue (matches the SDL3 the runtime builds)
         run: |
@@ -223,7 +240,11 @@ jobs:
         run: |
           ccache --zero-stats
           gradle :app:assembleRelease --no-daemon --stacktrace
-          ccache --show-stats
+
+      # Runs even when the build fails: the hit rate tells whether the object cache is working.
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats || true
 
       # Saved even when the build fails, so the objects compiled so far are reused on the next run.
       - name: Save ccache
