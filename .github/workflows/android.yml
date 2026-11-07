@@ -107,6 +107,22 @@ jobs:
           cp "$DOL" game/main.dol
           echo "053be60dde84c8042f45ed2f4ba80c17efb2d20fedf95a414c2c7e37d336912a  game/main.dol" | sha256sum -c -
 
+      # The translation cache key is computed once, here, before any build step runs. It uses the git tree
+      # hashes of the translator and the project (only committed files, so the bin/ and obj/ that
+      # `dotnet build` creates never change it) plus the checksum of main.dol. Restore and save below both
+      # use this same key. Before, the key was re-hashed at save time, after `dotnet build` had written
+      # bin/ and obj/ inside fw/translator, so every save landed under a key no later run ever asked for.
+      - name: Translation cache key
+        id: tkey
+        run: |
+          set -e
+          TR_TREE=$(git rev-parse "HEAD:fw/translator")
+          PR_TREE=$(git rev-parse "HEAD:projects/wario")
+          DOL=$(sha256sum game/main.dol | cut -c1-16)
+          KEY="translated-v2-${DOL}-${TR_TREE:0:16}-${PR_TREE:0:16}"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "::notice::Clave de traducción: $KEY"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -151,13 +167,14 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: generated
-          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**') }}
+          key: ${{ steps.tkey.outputs.key }}
           # Fallback used only with reuse_translation: the newest translation saved by an earlier run.
           restore-keys: |
-            translated-
+            translated-v2-
 
       # Full translation: only when there is no usable cache, or when reuse_translation is off and the key missed.
       - name: Translate the game (WiiCompiled translator)
+        # Runs only when there is no cached translation for this exact key (or when reuse_translation is off and nothing matched).
         if: steps.gen.outputs.cache-hit != 'true' && (inputs.reuse_translation != true || steps.gen.outputs.cache-matched-key == '')
         run: |
           dotnet build fw/translator/src/Translator.Cli/Translator.Cli.csproj -c Release
@@ -210,7 +227,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: generated
-          key: translated-${{ hashFiles('game/main.dol', 'fw/translator/**', 'projects/wario/**') }}
+          key: ${{ steps.tkey.outputs.key }}
 
       - name: Get the SDL3 Java glue (matches the SDL3 the runtime builds)
         run: |
