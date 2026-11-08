@@ -276,6 +276,14 @@ void RefreshDisplayLockLocked(Clock::time_point now) {
 #endif
 }
 
+// Android: reports the work each frame took before its vblank wait (android_bridge.cpp), so the
+// game thread's performance hint can ramp the CPU up. A no-op everywhere else.
+#if defined(__ANDROID__)
+extern "C" void WarioAndroidReportFrameWork(int64_t workNanos);
+#else
+inline void WarioAndroidReportFrameWork(int64_t) {}
+#endif
+
 extern "C" void WarioSetAndroidDisplayClock(int64_t vblankNanos, double hz) {
     g_androidDisplayClock.hz.store(hz, std::memory_order_release);
     g_androidDisplayClock.vblankNanos.store(vblankNanos, std::memory_order_release);
@@ -1004,6 +1012,9 @@ void VI_HLE_PresentFrame(bool presentedXfb, bool paceToRetrace) {
         const Clock::time_point now = Clock::now();
         if (s_lastEnd != Clock::time_point{}) {
             const double frame = ms(now - s_lastEnd);
+            // Work since the last present, without the wait for the vblank.
+            WarioAndroidReportFrameWork(static_cast<int64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(paceStart - s_lastEnd).count()));
             if (now - s_windowStart > std::chrono::minutes(1)) {
                 s_windowStart = now;
                 s_logged = 0;
