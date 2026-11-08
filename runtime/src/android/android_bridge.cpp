@@ -15,9 +15,17 @@ extern "C" void WarioSetAndroidDisplayClock(int64_t vblankNanos, double hz);  //
 #include "netplay_session.h"
 #include "netplay_start.h"
 #include "netplay_ui.h"
+#include "runtime_log.h"
 
 #include <SDL3/SDL_system.h>
 #include <jni.h>
+
+#include <android/api-level.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#if __ANDROID_API__ >= 33
+#include <android/performance_hint.h>
+#endif
 
 #include <chrono>
 #include <cstdint>
@@ -172,5 +180,47 @@ JNIEXPORT jboolean JNICALL Java_com_wario_shakeit_GameActivity_nativeTapScreen(J
 }
 
 } // extern "C"
+
+// ----------------------------------------------------------------------------
+// Sustained performance for the game thread (ADPF, Android 13+).
+//
+// The guest game runs on one thread and is paced by the display clock. Without a hint, the
+// scheduler does not know that this thread has a per-frame budget, so under load it can stay on
+// a low clock or a little core and miss a vblank; the frame then shows up as 33 ms instead of
+// 16.7 ms. The hint tells the system the thread's frame budget and how much work each frame took
+// (the time spent before the vblank wait, reported by hle/vi.cpp). It only changes scheduling:
+// the emulated timing and the output are unchanged. On older devices, or when the hint cannot be
+// created, this does nothing.
+namespace {
+#if __ANDROID_API__ >= 33
+APerformanceHintSession* g_guestHintSession = nullptr;
+bool g_guestHintTried = false;
+constexpr int64_t kGuestFrameBudgetNanos = 16666666;  // one frame at 60 Hz (the guest clock)
+#endif
+}  // namespace
+
+extern "C" void WarioAndroidReportFrameWork(int64_t workNanos) {
+#if __ANDROID_API__ >= 33
+    // The first frame is presented from the game thread, so the session is bound to that thread.
+    if (!g_guestHintTried) {
+        g_guestHintTried = true;
+        if (android_get_device_api_level() >= 33) {
+            if (APerformanceHintManager* manager = APerformanceHint_getManager()) {
+                const int32_t tid = static_cast<int32_t>(syscall(SYS_gettid));
+                g_guestHintSession =
+                    APerformanceHint_createSession(manager, &tid, 1, kGuestFrameBudgetNanos);
+            }
+        }
+        RT_LOGF(RT_TAG_VI, "ADPF guest hint: api %d, session %s (tid %d)\n",
+                android_get_device_api_level(), g_guestHintSession ? "created" : "not created",
+                static_cast<int>(syscall(SYS_gettid)));
+    }
+    if (g_guestHintSession != nullptr && workNanos > 0) {
+        APerformanceHint_reportActualWorkDuration(g_guestHintSession, workNanos);
+    }
+#else
+    (void)workNanos;
+#endif
+}
 
 #endif // __ANDROID__
