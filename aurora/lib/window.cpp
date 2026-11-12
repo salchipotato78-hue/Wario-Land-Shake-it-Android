@@ -1,6 +1,7 @@
 #include "window.hpp"
 
 #ifdef AURORA_ENABLE_GX
+#include "gfx/pipeline_cache.hpp"
 #include "imgui.hpp"
 #include "webgpu/gpu.hpp"
 #endif
@@ -234,6 +235,7 @@ bool SDLCALL lifecycle_event_watch(void*, SDL_Event* event) {
   // saved for the next launch when it leaves the screen (Dawn's device is internally locked).
   case SDL_EVENT_WILL_ENTER_BACKGROUND:
   case SDL_EVENT_TERMINATING:
+    ::aurora::gfx::flush_pipeline_cache_writes();
     webgpu::serialize_pipeline_caches();
     break;
 #endif

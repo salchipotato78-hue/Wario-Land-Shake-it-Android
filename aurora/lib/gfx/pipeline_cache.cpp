@@ -9,6 +9,11 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#if defined(__ANDROID__)
+#include <sys/resource.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
@@ -93,6 +98,9 @@ static std::mutex g_pipelineCacheWriterMutex;
 static std::deque<PipelineCacheWrite> g_pipelineCacheWriteQueue;
 static absl::flat_hash_set<PipelineRef> g_pipelineCachePendingWrites;
 static bool g_pipelineCacheWriterStop = false;
+// True while the writer thread is committing a batch. Guarded by g_pipelineCacheWriterMutex.
+static bool g_pipelineCacheWriterBusy = false;
+static std::condition_variable g_pipelineCacheDrainedCv;
 static int g_sdlVfsRegisterResult = SQLITE_ERROR;
 
 static SdlVfsSqliteFile* sdl_vfs_file(sqlite3_file* file) {
@@ -915,6 +923,7 @@ static void pipeline_cache_writer() {
       }
       batch.swap(g_pipelineCacheWriteQueue);
       g_pipelineCachePendingWrites.clear();
+      g_pipelineCacheWriterBusy = true;
     }
 
     bool writeFailed = false;
@@ -938,9 +947,22 @@ static void pipeline_cache_writer() {
     }
 
     if (writeFailed) {
+      {
+        std::lock_guard lock{g_pipelineCacheWriterMutex};
+        // Drop what could not be written so a flush waiting on the queue cannot hang.
+        g_pipelineCacheWriteQueue.clear();
+        g_pipelineCachePendingWrites.clear();
+        g_pipelineCacheWriterBusy = false;
+      }
+      g_pipelineCacheDrainedCv.notify_all();
       pipeline_cache_abort();
       return;
     }
+    {
+      std::lock_guard lock{g_pipelineCacheWriterMutex};
+      g_pipelineCacheWriterBusy = false;
+    }
+    g_pipelineCacheDrainedCv.notify_all();
   }
 }
 
@@ -990,6 +1012,11 @@ static void compile_pending_pipeline(PendingPipeline pending) {
 static void pipeline_worker() {
 #ifdef TRACY_ENABLE
   tracy::SetThreadName("Pipeline compilation thread");
+#endif
+#if defined(__ANDROID__)
+  // Lower nice value = less CPU for this thread when the game thread needs it. Raising the nice
+  // value needs no special permission.
+  setpriority(PRIO_PROCESS, static_cast<id_t>(gettid()), 10);
 #endif
 
   while (true) {
@@ -1049,7 +1076,15 @@ static size_t pipeline_worker_count() {
   }
   const size_t availableWorkers =
       logicalProcessors > ReservedLogicalProcessors ? logicalProcessors - ReservedLogicalProcessors : 1;
+#if defined(__ANDROID__)
+  // Phones: compiling shaders on most cores took CPU time from the game thread and caused the
+  // dips in busy scenes. A single low-priority worker (the same approach DriftDroid uses for its
+  // post-update shader rebuild) keeps the game thread free; new effects just appear a bit later.
+  (void)availableWorkers;
+  return 1;
+#else
   return std::clamp(availableWorkers, size_t{1}, MaxPipelineWorkers);
+#endif
 }
 
 template <typename PipelineConfig, typename CreateFn>
@@ -1187,6 +1222,18 @@ void initialize_pipeline_cache() {
   if (!g_pipelineCacheBroken) {
     start_pipeline_cache_writer();
   }
+}
+
+// Waits until every pipeline already queued for the SQLite cache is committed to disk, without
+// shutting the writer down. Called when the app leaves the screen, because on Android the process
+// can be killed right after and the queued rows would be lost.
+void flush_pipeline_cache_writes() {
+  std::unique_lock lock{g_pipelineCacheWriterMutex};
+  if (!g_pipelineCacheWriterThread.joinable()) {
+    return;
+  }
+  g_pipelineCacheDrainedCv.wait(lock,
+                                [] { return g_pipelineCacheWriteQueue.empty() && !g_pipelineCacheWriterBusy; });
 }
 
 void shutdown_pipeline_cache() {

@@ -29,7 +29,7 @@ public class WarioApplication extends Application {
     }
 
     // Bump when the files under runtime/assets change, so installs unpack them again.
-    private static final String RUNTIME_STAMP = "unpacked-3";
+    private static final String RUNTIME_STAMP = "unpacked-4";
 
     @Override
     public void onCreate() {

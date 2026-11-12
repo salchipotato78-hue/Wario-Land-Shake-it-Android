@@ -2044,6 +2044,18 @@ bool begin_frame() noexcept {
 }
 
 void end_frame() {
+  {
+    // Long-frame log: one line per frame gap that exceeds the threshold, so a hitch can be lined up
+    // with the logcat around it (shader compiles, texture uploads, thermal steps).
+    constexpr auto kLongFrameMs = std::chrono::milliseconds(50);
+    static auto lastEnd = std::chrono::steady_clock::time_point{};
+    const auto now = std::chrono::steady_clock::now();
+    if (lastEnd != std::chrono::steady_clock::time_point{} && now - lastEnd >= kLongFrameMs) {
+      Log.info("Long frame: {} ms between end_frame calls",
+               std::chrono::duration_cast<std::chrono::milliseconds>(now - lastEnd).count());
+    }
+    lastEnd = now;
+  }
 #ifdef AURORA_ENABLE_GX
   webgpu::fail_if_device_lost();
 #endif
