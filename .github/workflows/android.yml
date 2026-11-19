@@ -36,7 +36,9 @@ jobs:
       # throw the whole object cache away. A string pinned to the NDK version does not.
       CCACHE_COMPILERCHECK: "string:27.0.12077973"
       # Dependency sources (SDL, Dawn, abseil, ...) live here, so they can be cached between runs.
-      WARIO_FETCH_DIR: ${{ github.workspace }}/.fetch
+      # Outside the workspace on purpose: setup-gradle validates every gradle-wrapper.jar it finds under the
+      # workspace, and SDL's own wrapper jar (inside the fetched sources) is not one it knows.
+      WARIO_FETCH_DIR: ${{ runner.temp }}/wario-fetch
       # Android SDK preinstalled on the ubuntu-24.04 runner image.
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -214,6 +216,7 @@ jobs:
 
       # Full translation: only when there is no usable cache, or when reuse_translation is off and the key missed.
       - name: Translate the game (WiiCompiled translator)
+        id: translate
         # Runs only when there is no cached translation for this exact key (or when reuse_translation is off and nothing matched).
         if: steps.gen.outputs.cache-hit != 'true' && (inputs.reuse_translation != true || steps.gen.outputs.cache-matched-key == '')
         run: |
@@ -262,8 +265,10 @@ jobs:
             --native-source-dir runtime/src \
             --out generated/build_shards
 
+      # Explicit save: actions/cache@v4 saves in its post step, which runs only when the whole job succeeds, so a
+      # translation made by a run that fails later (the APK build) was never kept.
       - name: Save translated code
-        if: steps.gen.outputs.cache-hit != 'true' && inputs.reuse_translation != true
+        if: steps.gen.outputs.cache-hit != 'true' && steps.translate.outcome == 'success' && inputs.reuse_translation != true
         uses: actions/cache/save@v4
         with:
           path: generated
@@ -282,11 +287,12 @@ jobs:
       # Dependency sources and their sub-build stamps, so CMake does not download them again. The build
       # folders (*-build) are not cached: their objects are reused through ccache instead, which is smaller.
       - name: Cache dependency downloads
-        uses: actions/cache@v4
+        id: fetchcache
+        uses: actions/cache/restore@v4
         with:
           path: |
-            .fetch/*-src
-            .fetch/*-subbuild
+            ${{ runner.temp }}/wario-fetch/*-src
+            ${{ runner.temp }}/wario-fetch/*-subbuild
           key: fetch-${{ hashFiles('runtime/CMakeLists.txt', 'runtime/cmake/**', 'aurora/CMakeLists.txt', 'aurora/cmake/**', 'aurora/extern/CMakeLists.txt') }}-sdl${{ env.SDL_VERSION }}
           restore-keys: |
             fetch-
@@ -365,6 +371,15 @@ jobs:
 
       # Saved when the build fails (the objects compiled so far help the next run), and when the hit rate
       # shows that the restored cache is missing something. A run that hits almost everything skips the save.
+      - name: Save dependency downloads
+        if: always() && steps.fetchcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ runner.temp }}/wario-fetch/*-src
+            ${{ runner.temp }}/wario-fetch/*-subbuild
+          key: fetch-${{ hashFiles('runtime/CMakeLists.txt', 'runtime/cmake/**', 'aurora/CMakeLists.txt', 'aurora/cmake/**', 'aurora/extern/CMakeLists.txt') }}-sdl${{ env.SDL_VERSION }}
+
       - name: Save ccache
         if: always() && steps.ccstats.outputs.has == 'true' && (failure() || steps.ccstats.outputs.save == 'true')
         uses: actions/cache/save@v4

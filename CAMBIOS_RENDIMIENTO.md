@@ -89,6 +89,18 @@ Lo que **no** se hizo, y por qué:
 - Un runner más grande. Es lo que más ayudaría (el runner público tiene 4 núcleos), pero depende de
   la cuenta de GitHub.
 
+### Lo que mostraron los logs de los primeros runs reales
+
+- **Cachés que no se guardaban en runs fallidos.** `actions/cache@v4` guarda en su paso *post* y sólo si el job
+  termina bien. Un run que falla (por ejemplo, en el build) nunca guardaba la traducción ni las descargas. Ahora
+  la traducción y las descargas se guardan con `actions/cache/save` explícito.
+- **`setup-gradle` rechazaba el build.** Las descargas de dependencias estaban dentro del workspace, y
+  `setup-gradle` valida todos los `gradle-wrapper.jar` del workspace. El de SDL no es uno conocido. Ahora
+  `WARIO_FETCH_DIR` está en `runner.temp`, fuera del workspace.
+- **El build de APK llegó a compilar** (796 objetos de ccache, 0 aciertos en el primer run). Es esperable: la
+  traducción se regeneró, así que los fuentes generados cambiaron. Con la traducción restaurada, los aciertos
+  deberían subir en el siguiente run.
+
 ## Cómo verificarlo (no se pudo compilar aquí)
 
 En este entorno no hay NDK, CMake, ni Dawn/fmt/Tracy. Lo que sí se probó:
