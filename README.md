@@ -1,4 +1,4 @@
-# WarioRecomp — Wario Land: Shake It! for PC
+# WarioRecomp — Wario Land: Shake It! for Android (unofficial)
 
 > ⚠️ **Testing build.** The game boots, saves and is playable, but parts of it are still untested: expect
 > graphical glitches, crashes or features that don't respond yet. If you find one, please open an *issue* and
