@@ -22,10 +22,12 @@ necesita el TLS nativo de API 29 para no perder velocidad.
    con el explorador de Android. El zip se descomprime una vez en la carpeta de la app y se comprueba (cabecera
    RWLE01 rev. 0 y SHA-256 de `main.dol`). Para cambiarlo más tarde, abre el menú ⚙ en el juego y pulsa
    **Cambiar datos del juego…**.
-2. **En GitHub (para compilar el APK):** crea un *release* llamado `game-data` en el repo y sube ahí sólo el
-   archivo `sys/main.dol` de tu disco, con el nombre `main.dol` (pesa pocos MB; el zip completo supera el límite
-   de 2 GB por archivo de GitHub). El workflow lo comprueba con su SHA-256. El zip completo sigue siendo el que
-   usas en el teléfono.
+2. **En GitHub (para compilar el APK):** da el `main.dol` de tu disco de una de estas dos formas:
+   - **Secreto `WARIO_DATA_URL`** (recomendado): en *Settings → Secrets and variables → Actions*, crea el secreto con
+     un enlace de descarga directa al archivo `sys/main.dol` (por ejemplo, un enlace de Dropbox). También vale un zip
+     que contenga `sys/main.dol`. Pesa pocos MB; el zip completo sólo hace falta en el teléfono.
+   - **Un release** llamado `game-data` en el repo, con `main.dol` adjunto.
+   El workflow comprueba el SHA-256 en ambos casos. No compartas el enlace: da acceso a tu copia del juego.
 3. Ejecuta el workflow "Android APK". Al terminar, descarga el artefacto `wario-land-shake-it-apk`.
 
 ## Cómo llegan los datos al runtime

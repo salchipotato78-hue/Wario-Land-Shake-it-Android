@@ -1,6 +1,9 @@
-# The game is not in this repository. The workflow reads sys/main.dol from a release named "game-data"
-# in this repo (asset "main.dol"). Optionally, a repository secret WARIO_DATA_URL can point to a direct
-# link to a zip of the DATA folder instead.
+# The game is not in this repository. The workflow needs sys/main.dol of your own disc (US RWLE01, rev 0).
+# Two ways to give it to the workflow, in this order:
+#   1. Repository secret WARIO_DATA_URL: a direct download link to main.dol (a zip that contains sys/main.dol also
+#      works). Dropbox links are fine (the workflow changes dl=0 to dl=1). Google Drive is not reliable.
+#   2. Otherwise, a release named "game-data" in this repo with main.dol attached.
+# The main.dol checksum is verified below.
 name: Android APK
 
 # Builds Wario Land: Shake it! for Android (arm64-v8a) entirely on GitHub Actions.
@@ -83,41 +86,41 @@ jobs:
           WARIO_DATA_URL: ${{ secrets.WARIO_DATA_URL }}
         run: |
           set -e
-          mkdir -p /tmp/gamedata game
+          mkdir -p game
           if [ -n "$WARIO_DATA_URL" ]; then
-            # Optional: a direct link (not Drive) to the zip.
+            # Secret: a direct link to main.dol (or to a zip that contains sys/main.dol).
             URL="$WARIO_DATA_URL"
             if [[ "$URL" == *drive.google.com* ]]; then
               ID=$(echo "$URL" | sed -E 's/.*[?&]id=([^&]+).*/\1/; s#.*/d/([^/?]+).*#\1#')
               URL="https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t"
             fi
-            curl -fL --retry 3 -o /tmp/game.zip "$URL" || true
-          else
-            # Default: only sys/main.dol is uploaded (the build needs nothing else; the phone needs the full zip).
-            gh release download game-data -R "$GITHUB_REPOSITORY" -p "main.dol" -O game/main.dol \
-              || { echo "::error::No encuentro el release 'game-data' con el archivo main.dol. Sube ese archivo ahí (ver android/README.md)."; exit 1; }
-            echo "053be60dde84c8042f45ed2f4ba80c17efb2d20fedf95a414c2c7e37d336912a  game/main.dol" | sha256sum -c -
-            exit 0
-          fi
-          if ! unzip -tq /tmp/game.zip > /dev/null 2>&1; then
-            echo "::error::La descarga no es un zip válido."
-            if [ -f /tmp/game.zip ]; then
-              echo "Primeros bytes de lo recibido (si es HTML, Drive bloqueó la descarga):"
-              head -c 400 /tmp/game.zip | tr -s ' \n' ' ' || true
-              echo
-              grep -qi "quota\|too many users" /tmp/game.zip && echo "::error::Drive tiene la cuota de descargas agotada para este archivo. Usa un release (game-data.zip)."
-              grep -qi "virus\|scan" /tmp/game.zip && echo "::error::Drive pide confirmar el escaneo de virus. Usa un release (game-data.zip)."
+            # Dropbox links open a preview page unless they ask for a download (dl=1).
+            URL="${URL/dl=0/dl=1}"
+            curl -fL --retry 3 -o /tmp/download.bin "$URL" \
+              || { echo "::error::No pude descargar WARIO_DATA_URL. Revisa que sea un enlace de descarga directa."; exit 1; }
+            if unzip -tq /tmp/download.bin > /dev/null 2>&1; then
+              # A zip: take sys/main.dol out of it.
+              rm -rf /tmp/gamedata && mkdir -p /tmp/gamedata
+              unzip -q /tmp/download.bin -d /tmp/gamedata
+              DOL=$(find /tmp/gamedata -path '*/sys/main.dol' | head -n 1)
+              [ -n "$DOL" ] || { echo "::error::El zip no contiene sys/main.dol."; exit 1; }
+              cp "$DOL" game/main.dol
+            else
+              # Not a zip: it must be main.dol itself. An HTML page here means the link is a preview or a
+              # quota page, not the file.
+              if head -c 15 /tmp/download.bin | grep -qi "<!doctype\|<html"; then
+                echo "::error::El enlace devolvió una página web, no el archivo. Usa un enlace de descarga directa."
+                exit 1
+              fi
+              cp /tmp/download.bin game/main.dol
             fi
-            exit 1
+          else
+            # Default: a release named game-data with main.dol attached (see android/README.md).
+            gh release download game-data -R "$GITHUB_REPOSITORY" -p "main.dol" -O game/main.dol \
+              || { echo "::error::No encuentro el release 'game-data' con el archivo main.dol. Configura el secreto WARIO_DATA_URL o sube ese archivo (ver android/README.md)."; exit 1; }
           fi
-          unzip -q /tmp/game.zip -d /tmp/gamedata
-          DOL=$(find /tmp/gamedata -path '*/sys/main.dol' | head -n 1)
-          if [ -z "$DOL" ]; then
-            echo "::error::No encuentro sys/main.dol dentro del zip."
-            exit 1
-          fi
-          cp "$DOL" game/main.dol
-          echo "053be60dde84c8042f45ed2f4ba80c17efb2d20fedf95a414c2c7e37d336912a  game/main.dol" | sha256sum -c -
+          echo "053be60dde84c8042f45ed2f4ba80c17efb2d20fedf95a414c2c7e37d336912a  game/main.dol" | sha256sum -c - \
+            || { echo "::error::main.dol no coincide con el checksum de RWLE01 rev. 0. Revisa que sea el archivo correcto."; exit 1; }
 
       # The translation cache key is computed once, here, before any build step runs. It uses the git tree
       # hashes of the translator and the project (only committed files, so the bin/ and obj/ that
@@ -327,11 +330,20 @@ jobs:
         id: ccstats
         if: always()
         run: |
+          # The job can stop before the build (for example, when the game data is missing). Then ccache was never
+          # installed or used, so there is nothing to report and nothing to save.
+          if ! command -v ccache > /dev/null || [ ! -d "$CCACHE_DIR" ]; then
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "save=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ccache no se usó en este run (el job se detuvo antes del build)."
+            exit 0
+          fi
+          echo "has=true" >> "$GITHUB_OUTPUT"
           ccache --show-stats || true
           stats=$(ccache --print-stats 2>/dev/null || true)
-          get() { echo "$stats" | awk -v k="$1" '$1 == k { print $2 }'; }
+          get() { local v; v=$(echo "$stats" | awk -v k="$1" '$1 == k { print $2 }'); echo "${v:-0}"; }
           hits=$(( $(get direct_cache_hit) + $(get preprocessed_cache_hit) ))
-          misses=$(get cache_miss); misses=${misses:-0}
+          misses=$(get cache_miss)
           total=$(( hits + misses ))
           if [ "$total" -gt 0 ]; then rate=$(( hits * 100 / total )); else rate=0; fi
           restored="${{ steps.ccache.outputs.cache-matched-key }}"
@@ -354,7 +366,7 @@ jobs:
       # Saved when the build fails (the objects compiled so far help the next run), and when the hit rate
       # shows that the restored cache is missing something. A run that hits almost everything skips the save.
       - name: Save ccache
-        if: always() && (failure() || steps.ccstats.outputs.save == 'true')
+        if: always() && steps.ccstats.outputs.has == 'true' && (failure() || steps.ccstats.outputs.save == 'true')
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CCACHE_DIR }}
