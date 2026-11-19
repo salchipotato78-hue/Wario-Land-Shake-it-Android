@@ -64,6 +64,10 @@ TextureHandle new_static_texture_2d(uint32_t width, uint32_t height, uint32_t mi
 TextureHandle new_dynamic_texture_2d(uint32_t width, uint32_t height, uint32_t mips, u32 gxFormat,
                                      const char* label) noexcept;
 TextureHandle new_render_texture(uint32_t width, uint32_t height, u32 gxFormat, const char* label) noexcept;
+// Recycled sampled textures (new_dynamic_texture_2d). The pool is open from initialize until
+// shutdown; while closed nothing is kept, so a texture released after the device is gone is freed.
+void initialize_texture_pool() noexcept;
+void shutdown_texture_pool() noexcept;
 TextureHandle new_conv_texture(uint32_t width, uint32_t height, u32 gxFormat, const char* label) noexcept;
 void write_texture(TextureRef& ref, ArrayRef<uint8_t> data) noexcept;
 }; // namespace aurora::gfx

@@ -10,7 +10,13 @@ android {
 
     defaultConfig {
         applicationId = "com.wario.shakeit"
-        minSdk = 26
+        // Android 10. The engine needs a 64-bit CPU and a working Vulkan 1.1 driver, which in practice
+        // means Snapdragon 630/660 or newer (Adreno 5xx late / 6xx+) or an equivalent Mali.
+        //
+        // The floor is 29 for the engine's speed, not the app's: below 29 the NDK emulates thread-local
+        // storage, and the runtime reads thread-locals on nearly every translated guest call. Keep this in
+        // step with the minimum API the native build targets (-DANDROID_PLATFORM comes from here).
+        minSdk = 29
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
@@ -28,6 +34,11 @@ android {
                     "-DAURORA_DAWN_PROVIDER=package",
                     "-DMKW_TRANSLATED_COMPILE_JOBS=" + (System.getenv("WARIO_JOBS") ?: "2"))
                 // CI sets WARIO_CCACHE=1 to cache C/C++ objects between runs. Local builds are unchanged.
+                // CI sets WARIO_FETCH_DIR to a cached folder, so SDL, Dawn and the other dependencies are not
+                // downloaded again on every run. Local builds keep the default _deps folder.
+                System.getenv("WARIO_FETCH_DIR")?.takeIf { it.isNotEmpty() }?.let {
+                    arguments += "-DFETCHCONTENT_BASE_DIR=$it"
+                }
                 if (System.getenv("WARIO_CCACHE") == "1") {
                     arguments += listOf("-DCMAKE_C_COMPILER_LAUNCHER=ccache",
                         "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")

@@ -39,6 +39,10 @@ void OnFrameBoundary(uint32_t surfaceWidth, uint32_t surfaceHeight);
 // From any thread (the thermal governor). Re-applies the render resolution at the next frame
 // boundary, so a change of the thermal render factor takes effect without a settings change.
 void RefreshRenderer();
+// From the dynamic resolution controller (game thread or the frame worker). A factor on the render lines,
+// 0.25 to 1, applied at the next frame boundary. The player's setting is not changed.
+void SetDynamicScale(float factor);
+float DynamicScale();
 
 Settings Current();
 // Current() with any request not yet applied: what the next frame will use.

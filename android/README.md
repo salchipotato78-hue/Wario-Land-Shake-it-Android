@@ -14,6 +14,9 @@ Port Android del runtime (WarioRecomp) con:
 
 ## Requisitos
 
+**Teléfono:** Android 10 (API 29) o superior, arm64, con Vulkan 1.1. Android 8 y 9 ya no se soportan: el motor
+necesita el TLS nativo de API 29 para no perder velocidad.
+
 1. **En el teléfono:** un `.zip` con la carpeta DATA de tu disco (`sys/main.dol`, `sys/boot.bin`, `sys/fst.bin`
    y `files/`), de la versión US RWLE01 revisión 0. Al abrir la app, pulsa **Elegir zip de datos** y selecciónalo
    con el explorador de Android. El zip se descomprime una vez en la carpeta de la app y se comprueba (cabecera

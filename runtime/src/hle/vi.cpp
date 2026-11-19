@@ -1,6 +1,7 @@
 #include <vector>
 #include "frame_input.h"
 #include "frame_probe.h"
+#include "dynamic_resolution.h"
 #include "det_hash.h"
 #include "timebase_contract.h"
 #include "det_clock.h"
@@ -367,6 +368,14 @@ void SleepPreciselyUntil(Clock::time_point deadline, bool finishWithSpin = false
     while (Clock::now() < deadline) {
 #if defined(_WIN32)
         YieldProcessor();
+#elif defined(__aarch64__) || defined(__arm__)
+        // The same hint YieldProcessor gives on x86: it does not hand the core to another thread,
+        // it tells the processor this is a spin so it can drop power while waiting. Without it a
+        // phone burns a core flat out for the last fraction of every frame, and that heat comes
+        // straight back as a lower clock.
+        __asm__ __volatile__("yield" ::: "memory");
+#elif defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
 #endif
     }
 }
@@ -1022,10 +1031,14 @@ void VI_HLE_PresentFrame(bool presentedXfb, bool paceToRetrace) {
             if (frame > 20.0 && frame < 2000.0 && s_logged++ < 30) {
                 uint32_t sceneWord = 0;
                 Memory::TryRead32(0x80428730u, sceneWord);
+                // Textures come last because they answer a question the timings only raise: a large
+                // gx share is either the game drawing a great deal or the engine building textures,
+                // and creating one costs a trip through the driver that has nothing to do with size.
+                const AuroraStats* stats = aurora_get_stats();
                 RT_LOGF(RT_TAG_VI,
                         "slow frame %.1f ms (scene 0x%03X): game %.2f (gx %.2f, disc %.2f in %u reads), present %.2f, "
                         "end_frame %.2f, pace %.2f | totals: draw sync %u (callbacks %u), GKI_delay %u (%llu us), "
-                        "frame accept retries %u (expired %u)\n",
+                        "frame accept retries %u (expired %u), textures %u built (%u recycled)\n",
                         frame, sceneWord & 0xFFFFu, ms(presentStart - s_lastEnd), gxMs, dvdMs, frameReads,
                         ms(endFrameStart - presentStart),
                         ms(paceStart - endFrameStart), ms(now - paceStart),
@@ -1034,7 +1047,24 @@ void VI_HLE_PresentFrame(bool presentedXfb, bool paceToRetrace) {
                         FrameProbe::gkiDelayCalls.load(std::memory_order_relaxed),
                         static_cast<unsigned long long>(FrameProbe::gkiDelayMicros.load(std::memory_order_relaxed)),
                         FrameProbe::beginRetries.load(std::memory_order_relaxed),
-                        FrameProbe::beginExpired.load(std::memory_order_relaxed));
+                        FrameProbe::beginExpired.load(std::memory_order_relaxed),
+                        stats != nullptr ? stats->texturesBuilt : 0u,
+                        stats != nullptr ? stats->texturesRecycled : 0u);
+            }
+            // The same timings, handed to the dynamic resolution controller on every frame rather than
+            // only the slow ones: it needs the frames that arrived on time just as much, since those
+            // are what show there is room to put resolution back. Only paced frames carry a budget to
+            // be measured against; boot and black VI frames present as soon as they are ready and
+            // would read as free headroom.
+            if (paceToRetrace) {
+                double budgetMs = 0.0;
+                {
+                    std::lock_guard<std::mutex> lock(g_viMutex);
+                    EnsureInitializedLocked();
+                    budgetMs = std::chrono::duration<double, std::milli>(ActiveIntervalLocked()).count();
+                }
+                DynamicResolution::OnFramePresented(frame, ms(paceStart - endFrameStart), ms(now - paceStart),
+                                                    budgetMs);
             }
         }
         s_lastEnd = now;

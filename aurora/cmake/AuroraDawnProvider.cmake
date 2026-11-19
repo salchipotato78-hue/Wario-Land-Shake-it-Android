@@ -247,6 +247,32 @@ elseif (_aurora_dawn_provider STREQUAL "package")
       "The package must be a Dawn install tree built with DAWN_ENABLE_INSTALL=ON.")
   endif ()
 
+  # A prebuilt package records the absolute paths of the machine that built it. The Android package
+  # is built on Linux CI, so the NDK sysroot library it names (liblog.so) sits under a path that
+  # exists on no other machine, and ninja stops with "missing and no known rule to make it". The
+  # bare name links just as well and resolves against whichever NDK is in use here.
+  if (ANDROID)
+    get_target_property(_dawn_link_libs dawn::webgpu_dawn INTERFACE_LINK_LIBRARIES)
+    if (_dawn_link_libs)
+      set(_dawn_link_libs_fixed "")
+      foreach (_dawn_lib IN LISTS _dawn_link_libs)
+        if (_dawn_lib MATCHES "/sysroot/usr/lib/")
+          # Keeps whatever wraps the path, such as a $<LINK_ONLY:...> around it, and replaces only
+          # the path with the library's plain name: liblog.so becomes log.
+          if (_dawn_lib MATCHES "^([^/]*)/.*/lib([A-Za-z0-9_]+)[.](so|a)([^A-Za-z0-9_.]*)$")
+            set(_dawn_lib "${CMAKE_MATCH_1}${CMAKE_MATCH_2}${CMAKE_MATCH_4}")
+          endif ()
+        endif ()
+        list(APPEND _dawn_link_libs_fixed "${_dawn_lib}")
+      endforeach ()
+      if (NOT "${_dawn_link_libs_fixed}" STREQUAL "${_dawn_link_libs}")
+        message(STATUS "aurora: retargeted Dawn's NDK sysroot libraries onto this NDK")
+        set_target_properties(dawn::webgpu_dawn PROPERTIES
+          INTERFACE_LINK_LIBRARIES "${_dawn_link_libs_fixed}")
+      endif ()
+    endif ()
+  endif ()
+
   _aurora_dawn_set_platform_backends()
 
   get_target_property(_dawn_pkg_type dawn::webgpu_dawn TYPE)

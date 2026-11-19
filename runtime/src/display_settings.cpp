@@ -13,6 +13,7 @@
 #include <cstring>
 #include <string>
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 
 namespace DisplaySettings {
@@ -22,6 +23,12 @@ constexpr float kLinesPerScale = 480.0f;
 constexpr float kRatio16x9 = 16.0f / 9.0f;
 
 std::mutex g_mutex;
+// The dynamic resolution factor. Written from the game thread between frames and read where the render
+// height is computed; an atomic rather than the settings mutex because it changes on its own schedule
+// and must not be able to hold up a frame boundary.
+std::atomic<float> g_dynamicScale{1.0f};
+// What ApplyRenderer last used, so a change can be noticed at a frame boundary.
+float g_appliedDynamicScale = 1.0f;
 Settings g_current;
 Settings g_pending;
 bool g_hasPending = false;
@@ -73,11 +80,18 @@ void ApplyRenderer(const Settings& settings) {
     }
     // The thermal factor scales the picture's lines only; the user's setting is never changed.
     const float thermal = ThermalQuality::CurrentFactor();
-    const float lines = RenderLines(settings.renderScale, aspect) * thermal;
+    const float chosenLines = RenderLines(settings.renderScale, aspect);
+    const float dynamic = std::clamp(g_dynamicScale.load(std::memory_order_acquire), 0.25f, 1.0f);
+    g_appliedDynamicScale = dynamic;
+    // Both factors scale the picture's lines only; the user's setting is never changed. Rounded to an even
+    // line count: half-line targets give the EFB an odd workspace height, and a step that lands on the same
+    // count as the last one would recreate the render targets for nothing.
+    const float lines = chosenLines > 0.0f ? std::round(chosenLines * thermal * dynamic / 2.0f) * 2.0f : chosenLines;
     VISetFrameBufferLines(lines);
-    RT_LOGF(RT_TAG_VI, "display: aspect %d%s, render %.0f lines (%.2gx, thermal %.2f), surface %ux%u\n", aspect,
+    RT_LOGF(RT_TAG_VI,
+            "display: aspect %d%s, render %.0f lines (%.2gx, thermal %.2f, dynamic %.2f), surface %ux%u\n", aspect,
             aspect != settings.aspect ? " (game booted in 4:3)" : "", lines, settings.renderScale,
-            static_cast<double>(thermal), g_surfaceWidth, g_surfaceHeight);
+            static_cast<double>(thermal), static_cast<double>(dynamic), g_surfaceWidth, g_surfaceHeight);
 }
 
 // Fill: widen the game's 16:9 canvas to the surface (Hor+), keeping the game's own pixel aspect
@@ -126,6 +140,15 @@ void RefreshRenderer() {
     g_rendererDirty = true;
 }
 
+void SetDynamicScale(float factor) {
+    if (!std::isfinite(factor)) {
+        return;
+    }
+    g_dynamicScale.store(std::clamp(factor, 0.25f, 1.0f), std::memory_order_release);
+}
+
+float DynamicScale() { return g_dynamicScale.load(std::memory_order_acquire); }
+
 void OnFrameBoundary(uint32_t surfaceWidth, uint32_t surfaceHeight) {
     Settings settings;
     bool renderer = false;
@@ -146,6 +169,11 @@ void OnFrameBoundary(uint32_t surfaceWidth, uint32_t surfaceHeight) {
             if (SurfaceWiderThan169() != wasWide || g_current.renderScale <= 0.0f) {
                 g_rendererDirty = true;
             }
+        }
+        // A dynamic resolution step taken since the last boundary is applied here, with the same single
+        // resize the renderer does for any other change.
+        if (g_dynamicScale.load(std::memory_order_acquire) != g_appliedDynamicScale) {
+            g_rendererDirty = true;
         }
         settings = g_current;
         renderer = g_rendererDirty;
