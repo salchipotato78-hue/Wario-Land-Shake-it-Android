@@ -88,12 +88,23 @@ public class LauncherActivity extends Activity {
 
         LinearLayout middle = new LinearLayout(this);
         middle.setOrientation(LinearLayout.HORIZONTAL);
+        // The side menu sits in its own ScrollView: on a short screen the lower items (language, version) used to be
+        // cut off with no way to reach them. fillViewport keeps the spacer that pushes them down when everything fits.
         side = new LinearLayout(this);
         side.setOrientation(LinearLayout.VERTICAL);
         side.setBackgroundColor(SIDE);
-        middle.addView(side, new LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.MATCH_PARENT));
+        ScrollView sideScroll = new ScrollView(this);
+        sideScroll.setFillViewport(true);
+        sideScroll.setVerticalScrollBarEnabled(true);
+        // WRAP_CONTENT, not MATCH_PARENT: a matched child is exactly the screen height and would clip its items.
+        sideScroll.addView(side, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        middle.addView(sideScroll, new LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.MATCH_PARENT));
 
         scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setNestedScrollingEnabled(true);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(32), 0, dp(32), dp(24));
