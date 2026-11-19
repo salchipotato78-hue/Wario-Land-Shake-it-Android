@@ -40,6 +40,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A stale seed makes every GX shader compile on first use on the phone (stutter in new zones).
+      # This does not fail the build; it leaves a warning on the run. Regenerate with tools/promote_pipeline_seed.py.
+      - name: Check the bundled pipeline seed
+        run: |
+          python3 tools/check_pipeline_seed.py || echo "::warning::La semilla de pipelines está obsoleta: los shaders nuevos se compilarán en el teléfono (tirones). Ver CAMBIOS_SHADERS.md."
+
       # Each translated-code shard needs about 2 GB of RAM to compile (the PC build's rule, tools/build-wario.ps1),
       # so the job count is the smaller of the cores and (RAM - 6 GB) / 2.
       - name: Set parallel jobs

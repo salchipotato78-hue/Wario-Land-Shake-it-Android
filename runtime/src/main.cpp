@@ -1542,6 +1542,7 @@ int RuntimeMain(int argc, char** argv) {
         void StartAndroidPgoRecording();
         StartAndroidPgoRecording();
 #endif
+        auroraConfig.migrateStaleSeedPipelines = RuntimeConfigFile::MigrateStalePipelines(false);
         auroraConfig.logCallback = &RuntimeAuroraLogCallback;
         // Info by default: debug lines are formatted and written even when nobody reads them. Set
         // WARIO_LOG_DEBUG=1 (env) when diagnosing a problem.

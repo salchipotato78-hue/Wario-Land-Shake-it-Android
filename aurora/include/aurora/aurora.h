@@ -135,6 +135,11 @@ typedef struct {
   const char* pipelineCachePath;
 
   AuroraGpuCompat gpuCompat;
+
+  // Rewrites the bundled seed's pipelines from the previous GX config version (19) to the current one, when their
+  // size matches the current config layout. Off by default. Read at aurora_initialize, so it takes effect on the next
+  // launch. See CAMBIOS_SHADERS.md.
+  bool migrateStaleSeedPipelines;
 } AuroraConfig;
 
 typedef enum {

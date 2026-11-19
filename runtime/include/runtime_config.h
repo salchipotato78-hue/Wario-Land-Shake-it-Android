@@ -48,6 +48,7 @@ struct RuntimeUserConfig {
     std::optional<bool> metalFxSpatialUpscaling;
     std::optional<bool> skipUnreadyPipelines;
     std::optional<bool> androidFrameWorker;
+    std::optional<bool> migrateStalePipelines;
     std::optional<bool> disableCopyFilter;
     std::optional<bool> textureReplacements;
     std::optional<bool> textureDumps;
@@ -411,6 +412,9 @@ inline void EnsureConfigFile() {
               "# Android only: asynchronous frame submission worker (on by default, as on PC).\n"
               "# Set to false if the screen stays black on your device.\n"
               "android_frame_worker = true\n"
+              "# Rewrites the bundled shader seed from the previous config version instead of ignoring it. Takes effect\n"
+              "# on the next launch. Off by default until it has been checked on a device.\n"
+              "migrate_stale_pipelines = false\n"
               "disable_copy_filter = true\n"
               "show_fps = false\n"
               "# Dolphin-style custom textures. When enabled, the renderer indexes\n"
@@ -596,6 +600,7 @@ inline RuntimeUserConfig ParseConfigDocument(const toml::value& document) {
         FindConfigValue<bool>(document, "video", "metalfx_spatial_upscaling");
     config.skipUnreadyPipelines = FindConfigValue<bool>(document, "video", "skip_unready_pipelines");
     config.androidFrameWorker = FindConfigValue<bool>(document, "video", "android_frame_worker");
+    config.migrateStalePipelines = FindConfigValue<bool>(document, "video", "migrate_stale_pipelines");
     config.disableCopyFilter = FindConfigValue<bool>(document, "video", "disable_copy_filter");
     config.showFps = FindConfigValue<bool>(document, "video", "show_fps");
     config.spinningCoins = FindConfigValue<bool>(document, "video", "spinning_coins");
@@ -820,6 +825,11 @@ inline bool SetDisplayMode(std::string value) {
     }
     Mutable().displayMode = value;
     return WriteSetting("video", "display_mode", FormatString(value));
+}
+
+inline bool SetMigrateStalePipelines(bool value) {
+    Mutable().migrateStalePipelines = value;
+    return WriteSetting("video", "migrate_stale_pipelines", value ? "true" : "false");
 }
 
 inline bool SetAndroidFrameWorker(bool value) {
@@ -1151,6 +1161,11 @@ inline uint32_t FrameInterpolationFps(uint32_t fallback = 0) {
 // Whether to skip draws whose graphics pipeline has not finished compiling yet.
 inline bool SkipUnreadyPipelines(bool fallback = true) {
     return Get().skipUnreadyPipelines.value_or(fallback);
+}
+
+// Off by default; see AuroraConfig::migrateStaleSeedPipelines.
+inline bool MigrateStalePipelines(bool fallback = false) {
+    return Get().migrateStalePipelines.value_or(fallback);
 }
 
 // Android only; see aurora_set_android_frame_worker.

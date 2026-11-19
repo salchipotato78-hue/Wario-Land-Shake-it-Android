@@ -121,6 +121,7 @@ int g_displayMode = [] {
     return static_cast<int>(AURORA_DISPLAY_MODE_WINDOWED);
 }();
 bool g_skipUnreadyPipelines = RuntimeConfigFile::SkipUnreadyPipelines(true);
+bool g_migrateStalePipelines = RuntimeConfigFile::MigrateStalePipelines(false);
 bool g_disableCopyFilter = RuntimeConfigFile::DisableCopyFilter(true);
 bool g_showFps = RuntimeConfigFile::ShowFps(false);  // off unless turned on
 bool g_frameGraph = RuntimeConfigFile::FrameGraph(false);
@@ -1192,6 +1193,9 @@ void DrawGraphicsSettings() {
     if (ImGui::Checkbox("Skip draws while shaders compile", &g_skipUnreadyPipelines)) {
         aurora_set_skip_unready_pipelines(g_skipUnreadyPipelines);
         RuntimeConfigFile::SetSkipUnreadyPipelines(g_skipUnreadyPipelines);
+    }
+    if (ImGui::Checkbox("Migrate old shader cache (next launch)", &g_migrateStalePipelines)) {
+        RuntimeConfigFile::SetMigrateStalePipelines(g_migrateStalePipelines);
     }
     if (ImGui::Checkbox("Show FPS", &g_showFps)) {
         RuntimeConfigFile::SetShowFps(g_showFps);
