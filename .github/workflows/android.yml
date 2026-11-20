@@ -36,14 +36,17 @@ jobs:
       # throw the whole object cache away. A string pinned to the NDK version does not.
       CCACHE_COMPILERCHECK: "string:27.0.12077973"
       # Dependency sources (SDL, Dawn, abseil, ...) live here, so they can be cached between runs.
-      # Outside the workspace on purpose: setup-gradle validates every gradle-wrapper.jar it finds under the
-      # workspace, and SDL's own wrapper jar (inside the fetched sources) is not one it knows.
-      WARIO_FETCH_DIR: ${{ runner.temp }}/wario-fetch
       # Android SDK preinstalled on the ubuntu-24.04 runner image.
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
+
+      # Dependency sources go outside the workspace on purpose: setup-gradle validates every gradle-wrapper.jar it
+      # finds under the workspace, and SDL's own wrapper jar (inside the fetched sources) is not one it knows.
+      # (runner.temp is not available in job-level env, so the value is written here.)
+      - name: Set dependency folder outside the workspace
+        run: echo "WARIO_FETCH_DIR=$RUNNER_TEMP/wario-fetch" >> "$GITHUB_ENV"
 
       # A stale seed makes every GX shader compile on first use on the phone (stutter in new zones).
       # This does not fail the build; it leaves a warning on the run. Regenerate with tools/promote_pipeline_seed.py.
