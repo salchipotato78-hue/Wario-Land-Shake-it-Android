@@ -62,6 +62,8 @@ public class GameActivity extends SDLActivity {
     public static native void nativeSetTouchAim(float x, float y, float viewWidth, float viewHeight);
 
     private static final float GRAVITY = 9.80665f;
+    // Share of each accelerometer sample that enters gravity, only when the phone has no gravity sensor.
+    private static final float GRAVITY_LOW_PASS = 0.15f;
     // Shaking the phone: the push-pull of a shake moves the reading this far away from gravity (m/s²).
     private static final float SHAKE_PUSH_MS2 = 12f;
     // Twisting the phone: angular speed that counts as a twist (rad/s; 5 rad/s is about 290°/s).
@@ -72,30 +74,42 @@ public class GameActivity extends SDLActivity {
     private SensorManager sensorManager;
     private Sensor accelerometer;
     private boolean accelOn;
+    // Gravity alone (the phone's gyroscope fused with its accelerometer): no hand movement in it, so
+    // tilting is smooth like a real remote's. Null on phones without it; the accelerometer then serves.
+    private Sensor gravitySensor;
+    private boolean gravityOn;
+    private final float[] gravityLowPass = new float[3];
+    private boolean haveLowPass;
     private Sensor gyroscope;
     private boolean gyroOn;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable endMotionShake = this::endMotionShakeNow;
-    // Phone accelerometer -> the Wii Remote's frame (see SetPhoneAccel in virtual_remote.h). The
-    // game is landscape only, so the phone is read in the screen's frame first, then mapped: at rest
-    // the remote reads y = -1, and rolling the phone clockwise (as seen by the player) gives z > 0.
+    // Phone motion -> the Wii Remote's frame (see SetPhoneAccel in virtual_remote.h). The phone is read
+    // in the screen's frame first, then mapped: at rest the remote reads y = -1, and rolling the phone
+    // clockwise (as seen by the player) gives z > 0. Tilt comes from gravity (phoneGravity below); the
+    // accelerometer listener here only detects shakes, and feeds tilt only when there is no gravity sensor.
     private final SensorEventListener phoneMotion = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent e) {
             float dx = e.values[0], dy = e.values[1], dz = e.values[2];
-            float sx, sy;
-            switch (getWindowManager().getDefaultDisplay().getRotation()) {
-                case Surface.ROTATION_90:  sx = dy;  sy = -dx; break;
-                case Surface.ROTATION_180: sx = -dx; sy = -dy; break;
-                case Surface.ROTATION_270: sx = -dy; sy = dx;  break;
-                default:                   sx = dx;  sy = dy;  break;
-            }
-            nativeSetPhoneAccel(-dz / GRAVITY, -sy / GRAVITY, -sx / GRAVITY, true);
 
             // A shake pushes the reading away from gravity in every direction, so its length changes.
             float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (Math.abs(length - GRAVITY) > SHAKE_PUSH_MS2) {
                 motionShakeFor();
+            }
+
+            if (!gravityOn) {
+                // No gravity sensor: smooth the accelerometer into gravity (the same low-pass NSMB uses).
+                if (!haveLowPass) {
+                    System.arraycopy(e.values, 0, gravityLowPass, 0, 3);
+                    haveLowPass = true;
+                } else {
+                    for (int i = 0; i < 3; ++i) {
+                        gravityLowPass[i] += (e.values[i] - gravityLowPass[i]) * GRAVITY_LOW_PASS;
+                    }
+                }
+                sendGravity(gravityLowPass[0], gravityLowPass[1], gravityLowPass[2]);
             }
         }
 
@@ -103,6 +117,30 @@ public class GameActivity extends SDLActivity {
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
         }
     };
+
+    // The fused gravity sensor: the direction of gravity in the phone, without the hand's movement.
+    private final SensorEventListener phoneGravity = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent e) {
+            sendGravity(e.values[0], e.values[1], e.values[2]);
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
+
+    /** Sends gravity (m/s^2, phone frame) to the runtime as the remote's accelerometer. */
+    private void sendGravity(float dx, float dy, float dz) {
+        float sx, sy;
+        switch (getWindowManager().getDefaultDisplay().getRotation()) {
+            case Surface.ROTATION_90:  sx = dy;  sy = -dx; break;
+            case Surface.ROTATION_180: sx = -dx; sy = -dy; break;
+            case Surface.ROTATION_270: sx = -dy; sy = dx;  break;
+            default:                   sx = dx;  sy = dy;  break;
+        }
+        nativeSetPhoneAccel(-dz / GRAVITY, -sy / GRAVITY, -sx / GRAVITY, true);
+    }
 
     // Twisting the phone fast: the gyroscope reports how fast it turns around each axis.
     private final SensorEventListener phoneTwist = new SensorEventListener() {
@@ -394,12 +432,17 @@ public class GameActivity extends SDLActivity {
         if (sensorManager == null) {
             sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
             gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         }
         // No accelerometer: the game just gets no motion from the phone. No gyroscope: no twist shake.
         if (!accelOn && accelerometer != null) {
             accelOn = sensorManager.registerListener(phoneMotion, accelerometer, SensorManager.SENSOR_DELAY_GAME);
         }
+        if (!gravityOn && gravitySensor != null) {
+            gravityOn = sensorManager.registerListener(phoneGravity, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
+        }
+        haveLowPass = false;
         if (!gyroOn && gyroscope != null) {
             gyroOn = sensorManager.registerListener(phoneTwist, gyroscope, SensorManager.SENSOR_DELAY_GAME);
         }
@@ -409,10 +452,14 @@ public class GameActivity extends SDLActivity {
         if (sensorManager != null && accelOn) {
             sensorManager.unregisterListener(phoneMotion);
         }
+        if (sensorManager != null && gravityOn) {
+            sensorManager.unregisterListener(phoneGravity);
+        }
         if (sensorManager != null && gyroOn) {
             sensorManager.unregisterListener(phoneTwist);
         }
         accelOn = false;
+        gravityOn = false;
         gyroOn = false;
         handler.removeCallbacks(endMotionShake);
         if (overlay != null) {

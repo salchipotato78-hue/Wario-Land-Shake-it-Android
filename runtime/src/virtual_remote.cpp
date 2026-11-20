@@ -91,6 +91,10 @@ constexpr uint64_t kPadRefreshNs = 4'000'000;
 // L1/R1 y Q/E inclinan 30 grados.
 constexpr float kWarioMaxTilt = 1.4835299f;     // 85 grados
 constexpr float kWarioButtonTilt = 30.0f / 85.0f;
+// Share of the way the phone's gravity moves toward each new reading per frame. NSMB's tilt follows
+// its phone at 0.3 per frame (kTiltFollow): slow enough that a hand's small movements don't jolt the
+// tilt, quick enough that it still follows the turn. Was 0.6, which passed every jolt through.
+constexpr float kPhoneFollow = 0.3f;
 // Sacudir: mientras se mantiene, impulso alterno de +-3.46 g (decayendo dentro de cada mitad) en el eje
 // vertical del mando (KPAD y), que cambia cada 5 cuadros (6 Hz), como el 6 Hz +-90/26 g de portWario; una pulsacion corta dura 10 cuadros.
 constexpr float kWarioShakeG = 3.46f;
@@ -570,7 +574,7 @@ void ApplyMotion(Motion& motion, const Intent& intent, WiiRemoteInput::KpadSampl
     const bool useSensor = intent.hasAccel && intent.tilt == 0.0f && std::fabs(motion.tilt) < 0.02f;
     if (useSensor) {
         for (int k = 0; k < 3; ++k) {
-            motion.filt[k] = motion.filtValid ? motion.filt[k] + (intent.accel[k] - motion.filt[k]) * 0.6f : intent.accel[k];
+            motion.filt[k] = motion.filtValid ? motion.filt[k] + (intent.accel[k] - motion.filt[k]) * kPhoneFollow : intent.accel[k];
             sample.acc[k] = motion.filt[k];
         }
         motion.filtValid = true;
