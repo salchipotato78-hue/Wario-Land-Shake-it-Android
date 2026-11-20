@@ -141,6 +141,24 @@ public class LauncherActivity extends Activity {
         super.onResume();
         hideSystemBars();
         show(selected);  // the game and the data import can change the settings or the game folder
+        offerGamepadEditor();
+    }
+
+    // Asked once per launch, the first time a gamepad is seen (Bluetooth, or a handheld's built-in pad).
+    private static boolean askedAboutGamepad;
+
+    private void offerGamepadEditor() {
+        if (askedAboutGamepad || GamepadEditorActivity.firstGamepad(this) == null) {
+            return;
+        }
+        askedAboutGamepad = true;
+        new AlertDialog.Builder(this)
+                .setMessage(t("Se detectó un mando. ¿Quieres configurar sus botones?",
+                        "A gamepad was detected. Do you want to configure its buttons?"))
+                .setPositiveButton(t("Sí", "Yes"),
+                        (dialog, which) -> startActivity(new Intent(this, GamepadEditorActivity.class)))
+                .setNegativeButton(t("No", "No"), null)
+                .show();
     }
 
     @Override
@@ -406,6 +424,12 @@ public class LauncherActivity extends Activity {
                 + "En el juego, el ⚙ muestra siempre los botones para ajustarlos y oculta/muestra desde el menú.",
                "With «Automatic», the buttons hide when a gamepad connects and come back when it is removed. "
                 + "In game, the ⚙ always shows the buttons so you can adjust them, and the menu can hide or show them."), MUTED);
+
+        section(t("Mando", "Gamepad"));
+        flatButton(t("Configurar los botones del mando…", "Configure the gamepad buttons…"),
+                () -> startActivity(new Intent(this, GamepadEditorActivity.class)));
+        info(t("Elige qué botón del mando hace cada botón del Wii Remote. Se aplica al jugar.",
+               "Choose which gamepad button does each Wii Remote button. It applies when you play."), MUTED);
 
         section(t("Mando táctil", "Touch remote"));
         info(t("Dentro del juego, pulsa el botón ⚙ (arriba a la izquierda) para mover, cambiar de tamaño y de opacidad\n"

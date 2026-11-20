@@ -36,8 +36,19 @@ bool WarioFullWide() {
 
 // Called right before each layout draw (gx_pixel.cpp), so it also runs after the static
 // constructors that fill the view-rect globals.
+// The on-screen test's widescreen factor (fn_80090424): 1.33 narrows the test to 4:3, 1.0 keeps 16:9.
+// Objects appear and disappear by that test, so on wide screens it must not narrow (as on PC, where
+// the submarine's torpedoes and enemies blinked out at the 4:3 edge).
+void WarioWideOnScreenFactor(bool wide) {
+    constexpr uint32_t kOnScreenScale = 0x80620C9Cu;
+    constexpr float kOriginal = 1.33f;
+    const float want = wide ? 1.0f : kOriginal;
+    if (Memory::ReadFloat32(kOnScreenScale) != want) Memory::WriteFloat32(kOnScreenScale, want);
+}
+
 void WarioWideApplyGlobals() {
     if (!WarioFullWide()) return;
+    WarioWideOnScreenFactor(true);
     // fn_80051E28 culls the stage's objects against +-4 x +-3 units times this factor (1.0, read
     // only there).
     // The factor follows the screen: 4/3 on 16:9 and narrower, 3 * aspect / 4 on wider Fill screens
@@ -50,15 +61,23 @@ void WarioWideApplyGlobals() {
     // fn_8011D8C8 (0x806282DC), fn_8004E7E4 (0x80627D2C), fn_80215E68 (0x8062890C). The 4:3 value
     // is remembered on first sight; each write is base * factor, applied only to the value the
     // previous write left, so it never compounds when the factor changes.
-    static const uint32_t kViewWidths[] = {0x80628BACu, 0x806282DCu, 0x80627D2Cu, 0x8062890Cu};
-    static float baseWidth[4] = {0.f, 0.f, 0.f, 0.f};
-    static float appliedFactor[4] = {1.f, 1.f, 1.f, 1.f};
-    for (int i = 0; i < 4; ++i) {
+    // 0x80628BB4: the submarine's screen walls (fn_802896A4). They are placed once and cached at
+    // 0x8061F070 / 0x8061F078, guarded by 0x8061F074 / 0x8061F07C, so changing the width clears the
+    // guards and the walls follow it. Without this the camera, which stops at the end of a sub
+    // section, left the exit out of the sub's reach.
+    static const uint32_t kViewWidths[] = {0x80628BACu, 0x806282DCu, 0x80627D2Cu, 0x8062890Cu, 0x80628BB4u};
+    static float baseWidth[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
+    static float appliedFactor[5] = {1.f, 1.f, 1.f, 1.f, 1.f};
+    for (int i = 0; i < 5; ++i) {
         const float cur = Memory::ReadFloat32(kViewWidths[i]);
         if (baseWidth[i] == 0.f && cur > 0.f) baseWidth[i] = cur;
         if (baseWidth[i] > 0.f && cur == baseWidth[i] * appliedFactor[i] && appliedFactor[i] != factor) {
             Memory::WriteFloat32(kViewWidths[i], baseWidth[i] * factor);
             appliedFactor[i] = factor;
+            if (kViewWidths[i] == 0x80628BB4u) {
+                Memory::Write8(0x8061F074u, 0);
+                Memory::Write8(0x8061F07Cu, 0);
+            }
         }
     }
 }
