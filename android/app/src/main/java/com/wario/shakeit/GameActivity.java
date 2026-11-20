@@ -1,6 +1,7 @@
 package com.wario.shakeit;
 
 import android.hardware.display.DisplayManager;
+import android.hardware.input.InputManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -136,6 +137,34 @@ public class GameActivity extends SDLActivity {
     }
 
     private TouchOverlay overlay;
+
+    // A gamepad connected or removed: in Automatic mode the touch buttons follow it.
+    private InputManager inputManager;
+    private final InputManager.InputDeviceListener gamepadListener = new InputManager.InputDeviceListener() {
+        @Override
+        public void onInputDeviceAdded(int deviceId) {
+            applyTouchVisibility();
+        }
+
+        @Override
+        public void onInputDeviceRemoved(int deviceId) {
+            applyTouchVisibility();
+        }
+
+        @Override
+        public void onInputDeviceChanged(int deviceId) {
+            applyTouchVisibility();
+        }
+    };
+    private boolean gamepadListenerOn;
+
+    /** Shows or hides the touch buttons as the touch mode says (Show, Hide, or Auto with a gamepad). */
+    void applyTouchVisibility() {
+        if (overlay != null) {
+            overlay.setTouchShown(TouchMode.shouldShow(this));
+        }
+    }
+
     private Choreographer.FrameCallback displayClock;
     // Thermal headroom is polled about once a second (API 31+) on the same frame callback.
     private static final long THERMAL_POLL_NANOS = 1_000_000_000L;
@@ -197,6 +226,7 @@ public class GameActivity extends SDLActivity {
         addContentView(overlay.createPanel(), new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        applyTouchVisibility();
     }
 
     private int configAspect() {
@@ -350,6 +380,14 @@ public class GameActivity extends SDLActivity {
         super.onResume();
         startDisplayClock();
         startPhoneMotion();
+        if (inputManager == null) {
+            inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+        }
+        if (!gamepadListenerOn && inputManager != null) {
+            inputManager.registerInputDeviceListener(gamepadListener, handler);
+            gamepadListenerOn = true;
+        }
+        applyTouchVisibility();
     }
 
     private void startPhoneMotion() {
@@ -400,6 +438,10 @@ public class GameActivity extends SDLActivity {
         }
         displayClockOn = false;
         stopPhoneMotion();
+        if (gamepadListenerOn && inputManager != null) {
+            inputManager.unregisterInputDeviceListener(gamepadListener);
+            gamepadListenerOn = false;
+        }
         super.onPause();
     }
 

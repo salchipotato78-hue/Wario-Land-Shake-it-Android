@@ -68,6 +68,9 @@ public class TouchOverlay extends View {
     private final Paint selectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean editing;
+    // Whether the remote is shown by the touch mode (see TouchMode). The gear stays either way.
+    private boolean touchShown = true;
+    private final TextView[] modeChips = new TextView[3];
     private int selected = JOY;
     private int dragControl = -1;
     private int dragPointer = -1;
@@ -195,6 +198,20 @@ public class TouchOverlay extends View {
         return Math.max(0.02f, Math.min(0.98f, v));
     }
 
+    /** Shows or hides the remote (GameActivity applies TouchMode). The gear always stays. */
+    public void setTouchShown(boolean on) {
+        touchShown = on;
+        if (!controlsActive()) {
+            releaseAll();
+        }
+        invalidate();
+    }
+
+    // The remote is drawn while the touch mode shows it, and always while the menu is open for editing.
+    private boolean controlsActive() {
+        return touchShown || editing;
+    }
+
     // ---- Input -------------------------------------------------------------------------
 
     private int contribution(int c, float x, float y) {
@@ -279,6 +296,10 @@ public class TouchOverlay extends View {
         if (gearRect().contains(x, y)) {
             setEditing(true);
             return true;
+        }
+        if (!controlsActive()) {
+            // Hidden remote: the touch goes through to the game.
+            return false;
         }
         if (skipRect().contains(x, y)) {
             pointerControl.put(id, SKIP_HIT);
@@ -461,6 +482,9 @@ public class TouchOverlay extends View {
             dragControl = -1;
             dragPointer = -1;
             saveAll();
+            if (!touchShown) {
+                releaseAll();
+            }
         }
         if (panel != null) {
             panel.setVisibility(on ? VISIBLE : GONE);
@@ -541,6 +565,27 @@ public class TouchOverlay extends View {
         actions.addView(done);
         box.addView(actions);
 
+        // Touch buttons: always, never, or only while no gamepad is connected.
+        box.addView(label("Touch buttons (Auto = hidden with a gamepad)", 13));
+        LinearLayout modeRow = new LinearLayout(ctx);
+        modeRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] modeNames = {"Show", "Hide", "Auto"};
+        for (int m = 0; m < modeNames.length; m++) {
+            final int mode = m;
+            TextView chip = label(modeNames[m], 14);
+            chip.setPadding(dp(8), dp(6), dp(8), dp(6));
+            chip.setOnClickListener(v -> {
+                TouchMode.set(getContext(), mode);
+                syncModeChips();
+                if (getContext() instanceof GameActivity) {
+                    ((GameActivity) getContext()).applyTouchVisibility();
+                }
+            });
+            modeChips[m] = chip;
+            modeRow.addView(chip);
+        }
+        box.addView(modeRow);
+
         // Full 16:9 in levels (the runtime reads [video] full_widescreen once, at startup).
         File wideConfig = SetupActivity.configFile(getContext());
         TextView wide = label(wideLabel(wideConfig), 13);
@@ -570,6 +615,7 @@ public class TouchOverlay extends View {
         panel = box;
         panel.setVisibility(GONE);
         syncPanel();
+        syncModeChips();
         return box;
     }
 
@@ -585,6 +631,15 @@ public class TouchOverlay extends View {
 
     private static String wideLabel(File config) {
         return "Full 16:9 in levels: " + (isWideOn(config) ? "On" : "Off");
+    }
+
+    private void syncModeChips() {
+        int current = TouchMode.get(getContext());
+        for (int m = 0; m < modeChips.length; m++) {
+            if (modeChips[m] != null) {
+                modeChips[m].setTextColor(m == current ? Color.YELLOW : Color.WHITE);
+            }
+        }
     }
 
     private void syncPanel() {
@@ -624,14 +679,19 @@ public class TouchOverlay extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        for (int c = 0; c < COUNT; c++) {
-            if (c == SHAKE_C && !SHAKE_BUTTON) {
-                continue;
+        if (controlsActive()) {
+            for (int c = 0; c < COUNT; c++) {
+                if (c == SHAKE_C && !SHAKE_BUTTON) {
+                    continue;
+                }
+                drawControl(canvas, c);
             }
-            drawControl(canvas, c);
         }
         if (!editing) {
+            // The gear stays visible while the remote is hidden, so the player can bring it back.
             drawGear(canvas);
+        }
+        if (!editing && controlsActive()) {
             drawSkip(canvas);
             drawAim(canvas);
         }

@@ -392,6 +392,21 @@ public class LauncherActivity extends Activity {
     private void buildControls() {
         header(t("Controles", "Controls"), t("Qué hace cada botón táctil. El juego usa un Wii Remote de lado.",
                 "What each touch button does. The game uses a sideways Wii Remote."));
+        section(t("Botones táctiles", "Touch buttons"));
+        String[] labels = {
+            t("Mostrar siempre", "Always show"),
+            t("Ocultar siempre", "Always hide"),
+            t("Automático: ocultar con mando", "Automatic: hide with a gamepad"),
+        };
+        // Same order as TouchMode.SHOW, HIDE, AUTO.
+        row(t("Botones en pantalla", "On-screen buttons"),
+                picker(labels, TouchMode.get(this), i -> TouchMode.set(this, i)));
+        statusTouch();
+        info(t("Con «Automático», los botones se ocultan al conectar un mando y vuelven al desconectarlo. "
+                + "En el juego, el ⚙ muestra siempre los botones para ajustarlos y oculta/muestra desde el menú.",
+               "With «Automatic», the buttons hide when a gamepad connects and come back when it is removed. "
+                + "In game, the ⚙ always shows the buttons so you can adjust them, and the menu can hide or show them."), MUTED);
+
         section(t("Mando táctil", "Touch remote"));
         info(t("Dentro del juego, pulsa el botón ⚙ (arriba a la izquierda) para mover, cambiar de tamaño y de opacidad\n"
                 + "cada botón. Los cambios se guardan solos.",
@@ -538,6 +553,12 @@ public class LauncherActivity extends Activity {
         boolean ok = SetupActivity.dataReady(this);
         info((ok ? "✔ " + t("Juego encontrado", "Game found") : "✖ " + t("No hay datos del juego: elige el zip en Instalación.",
                 "No game data: choose the zip on the Install page.")), ok ? GOOD : BAD);
+    }
+
+    private void statusTouch() {
+        boolean pad = TouchMode.gamepadConnected(this);
+        info(t("Mando conectado ahora: ", "Gamepad connected now: ") + (pad ? t("sí", "yes") : t("no", "no")),
+                pad ? GOOD : MUTED);
     }
 
     private void widescreenCheck() {
