@@ -18,8 +18,10 @@ android {
         // step with the minimum API the native build targets (-DANDROID_PLATFORM comes from here).
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Android installs an update only over an older versionCode. CI sets WARIO_VERSION_CODE to the
+        // run number, so every build can update the one before it.
+        versionCode = System.getenv("WARIO_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("WARIO_VERSION_NAME")?.takeIf { it.isNotEmpty() } ?: "0.1.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -68,11 +70,30 @@ android {
         }
     }
 
+    // One stable key for every build: an update installs over the old app only when both are signed with
+    // the same key. Set WARIO_KEYSTORE_PATH and the passwords (CI takes them from secrets). Without them the
+    // debug key is used, which differs from machine to machine, so those builds can't update each other.
+    val releaseKeystore = System.getenv("WARIO_KEYSTORE_PATH")?.takeIf { it.isNotEmpty() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("wario") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("WARIO_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("WARIO_KEY_ALIAS")
+                keyPassword = System.getenv("WARIO_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Debug key so the APK installs without a keystore. Replace before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeystore != null) {
+                signingConfigs.getByName("wario")
+            } else {
+                logger.warn("WARIO_KEYSTORE_PATH is not set: signing with the debug key, which can't update older builds.")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

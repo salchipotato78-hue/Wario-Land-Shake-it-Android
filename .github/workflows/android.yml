@@ -311,10 +311,29 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # The release key: the same key on every build lets an update install over the previous app. Without the
+      # secret the APK is signed with the debug key, and it can't update an app signed by another build.
+      - name: Restore the release signing key
+        env:
+          WARIO_KEYSTORE_BASE64: ${{ secrets.WARIO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$WARIO_KEYSTORE_BASE64" ]; then
+            echo "$WARIO_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wario-release.jks"
+            echo "WARIO_KEYSTORE_PATH=$RUNNER_TEMP/wario-release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Falta el secreto WARIO_KEYSTORE_BASE64: el APK se firma con la clave debug y no podrá actualizar una instalación firmada con otra clave."
+          fi
+
       - name: Build the APK
         working-directory: android
         env:
           WARIO_CCACHE: "1"
+          # One increasing number per run, so an update is always newer than the app on the phone.
+          WARIO_VERSION_CODE: ${{ github.run_number }}
+          WARIO_VERSION_NAME: "0.1.${{ github.run_number }}"
+          WARIO_KEYSTORE_PASSWORD: ${{ secrets.WARIO_KEYSTORE_PASSWORD }}
+          WARIO_KEY_ALIAS: ${{ secrets.WARIO_KEY_ALIAS }}
+          WARIO_KEY_PASSWORD: ${{ secrets.WARIO_KEY_PASSWORD }}
           # Diagnóstico: por qué ccache no acierta (ver el artefacto ccache-log).
           CCACHE_LOGFILE: ${{ runner.temp }}/ccache.log
         run: |
