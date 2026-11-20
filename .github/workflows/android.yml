@@ -66,19 +66,8 @@ jobs:
           echo "WARIO_JOBS=$jobs" >> "$GITHUB_ENV"
           echo "Translated-code shard jobs: $jobs (cores $cores, RAM ${ram_gb} GB)"
 
-      - name: Free disk space on the runner
-        # The translated runtime and its object files need more room than the default runner image leaves free.
-        run: |
-          echo "Antes:"; df -h /
-          sudo rm -rf /opt/ghc /usr/local/share/boost /usr/share/swift /usr/local/.ghcup \
-            /opt/hostedtoolcache/CodeQL /usr/share/az_* /usr/lib/google-cloud-sdk \
-            /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/system-images \
-            /usr/local/lib/android/sdk/emulator || true
-          sudo docker image prune --all --force || true
-          echo "Después:"; df -h /
-
-      # The NDK is about 1.5 GB. Cache it after the cleanup above (which removes the preinstalled NDK),
-      # so repeated runs restore it from the cache instead of downloading it again from Google.
+      # The NDK is about 1.5 GB. Cache it, so repeated runs restore it from the cache instead of downloading
+      # it again from Google.
       - name: Cache NDK
         uses: actions/cache@v4
         with:
@@ -271,7 +260,8 @@ jobs:
       # Explicit save: actions/cache@v4 saves in its post step, which runs only when the whole job succeeds, so a
       # translation made by a run that fails later (the APK build) was never kept.
       - name: Save translated code
-        if: steps.gen.outputs.cache-hit != 'true' && steps.translate.outcome == 'success' && inputs.reuse_translation != true
+        # Runs whenever the translation step itself succeeded (it only runs on a cache miss).
+        if: steps.translate.outcome == 'success'
         uses: actions/cache/save@v4
         with:
           path: generated
