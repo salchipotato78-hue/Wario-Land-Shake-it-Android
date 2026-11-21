@@ -32,6 +32,13 @@
             android:exported="false"
             android:screenOrientation="sensorLandscape" />
 
+        <!-- Export or import the game's saves as a zip (see Saves). -->
+        <activity
+            android:name=".SavesActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|keyboard|navigation"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape" />
+
         <!-- Gamepad button editor: maps the Wii Remote buttons to the pad (saved in Config.toml [gamepad]). -->
         <activity
             android:name=".GamepadEditorActivity"

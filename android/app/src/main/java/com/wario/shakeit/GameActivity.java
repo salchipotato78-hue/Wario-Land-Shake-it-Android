@@ -239,6 +239,11 @@ public class GameActivity extends SDLActivity {
         // Lets the launcher tell failures of this run from older ones.
         SetupActivity.touchStartMarker(this);
 
+        // A copy of the saves before the game can change them (the PC launcher does the same).
+        if (Saves.backupOnStart(this)) {
+            Saves.backupNow(this);
+        }
+
         // Before the runtime starts (it reads Config.toml once): ask for no more frame interpolation
         // than this screen can show. A target the panel cannot present leaves the interpolated frames
         // unpresentable, which the runtime reads as overrun and drops to 60 Hz judder.

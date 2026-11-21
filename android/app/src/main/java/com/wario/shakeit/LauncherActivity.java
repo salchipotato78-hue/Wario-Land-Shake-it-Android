@@ -236,9 +236,18 @@ public class LauncherActivity extends Activity {
         });
         side.addView(lang, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(34)));
 
-        TextView version = text("Android port", 11, MUTED);
+        TextView version = text("Android port · v" + appVersion(), 11, MUTED);
         version.setGravity(Gravity.CENTER);
         side.addView(version, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(26)));
+    }
+
+    /** The app's version as the build set it (CI: 0.1.<run number>), read from the installed package. */
+    private String appVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "?";
+        }
     }
 
     private String[] pageTitles() {
@@ -397,6 +406,26 @@ public class LauncherActivity extends Activity {
             Intent setup = new Intent(this, SetupActivity.class);
             setup.putExtra(SetupActivity.EXTRA_CHOOSE, true);
             startActivity(setup);
+        });
+
+        section(t("Partidas", "Saves"));
+        CheckBox backup = new CheckBox(this);
+        backup.setText(t("Copiar las partidas antes de cada inicio", "Back up saves before every start"));
+        backup.setTextColor(TEXT);
+        backup.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        backup.setButtonTintList(ColorStateList.valueOf(GOLD));
+        backup.setChecked(Saves.backupOnStart(this));
+        backup.setOnCheckedChangeListener((b, on) -> Saves.setBackupOnStart(this, on));
+        page.addView(backup, wrap(0, dp(8), 0, 0));
+        info(t("Se guardan las últimas 10 copias. Antes de importar también se guarda una copia.",
+               "The last 10 copies are kept. Before an import, a copy is made too."), MUTED);
+        info(t("Copias guardadas: ", "Copies kept: ") + Saves.backupCount(this), MUTED);
+        flatButton(t("Exportar partidas (.zip)…", "Export saves (.zip)…"),
+                () -> startActivity(new Intent(this, SavesActivity.class)));
+        flatButton(t("Importar partidas (.zip)…", "Import saves (.zip)…"), () -> {
+            Intent pick = new Intent(this, SavesActivity.class);
+            pick.putExtra(SavesActivity.EXTRA_IMPORT, true);
+            startActivity(pick);
         });
 
         section(t("Idioma", "Language"));
