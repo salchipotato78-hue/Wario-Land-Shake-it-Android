@@ -173,6 +173,12 @@ JNIEXPORT jfloatArray JNICALL Java_com_wario_shakeit_GameActivity_nativeTakeSett
     return result;
 }
 
+// GameActivity.nativePhoneRumble: whether the game is rumbling right now (the phone then vibrates).
+JNIEXPORT jboolean JNICALL Java_com_wario_shakeit_GameActivity_nativePhoneRumble(JNIEnv*, jclass)
+{
+    return VirtualRemote::PhoneRumbleOn() ? JNI_TRUE : JNI_FALSE;
+}
+
 // GameActivity.nativeTapScreen: whether a menu that taps drive is up (the app hides its remote).
 JNIEXPORT jboolean JNICALL Java_com_wario_shakeit_GameActivity_nativeTapScreen(JNIEnv*, jclass)
 {

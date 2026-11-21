@@ -95,9 +95,10 @@ constexpr float kWarioButtonTilt = 30.0f / 85.0f;
 // its phone at 0.3 per frame (kTiltFollow): slow enough that a hand's small movements don't jolt the
 // tilt, quick enough that it still follows the turn. Was 0.6, which passed every jolt through.
 constexpr float kPhoneFollow = 0.12f;
-// WARIO: el giro del celular se copia con esta fraccion (1 = 1:1). Con 1:1 el puntero/inclinacion iba mas
-// rapido que con el Wii Remote original; 0.6 deja el mismo gesto mas suave.
-constexpr float kPhoneTiltGain = 0.6f;
+// WARIO: el Wii Remote mide la gravedad (acelerometro ADXL330, +-3 g) y el juego usa ese angulo tal cual:
+// 1:1, sin zona muerta ni escala. El celular hace lo mismo (fraccion 1 = 1:1 con el angulo real).
+constexpr float kPhoneTiltGain = 1.0f;
+constexpr float kPhoneDeadZone = 0.0f;
 // Sacudir: mientras se mantiene, impulso alterno de +-3.46 g (decayendo dentro de cada mitad) en el eje
 // vertical del mando (KPAD y), que cambia cada 5 cuadros (6 Hz), como el 6 Hz +-90/26 g de portWario; una pulsacion corta dura 10 cuadros.
 constexpr float kWarioShakeG = 3.46f;
@@ -490,6 +491,19 @@ Intent GamepadIntent() {
     return intent;
 }
 
+// WARIO: inclinacion (fraccion de 85 grados, como la punta de apuntar) a partir de la gravedad del celular.
+// Mismo angulo que el Wii Remote: rotacion desde el reposo (0, -1, 0) hacia la gravedad actual.
+float PhoneTiltFromGravity(const float* acc) {
+    const float len = std::sqrt(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
+    if (!(len > 1e-3f)) return 0.0f;
+    const float gx = acc[0] / len, gy = acc[1] / len, gz = acc[2] / len;
+    const float angle = std::acos(std::clamp(-gy, -1.0f, 1.0f));
+    const float axisLen = std::sqrt(gz * gz + gx * gx);
+    if (!(axisLen > 1e-4f)) return 0.0f;
+    const float kx = -gz / axisLen;
+    return std::clamp(-kx * angle / kWarioMaxTilt, -1.0f, 1.0f);
+}
+
 // The on-screen remote and phone motion set through SetTouchState.
 Intent TouchIntent() {
     Intent intent;
@@ -523,13 +537,15 @@ Intent TouchIntent() {
         }
         intent.tilt = s_touchTiltHeld;
     }
-    // Moving the phone is the Wii Remote's motion: tilt for the aiming parts and the shake for
-    // the shaking parts both come from the game reading this accelerometer, as with a real remote.
-    if (WarioMotionOn() && g_phoneAccelValid.load(std::memory_order_relaxed)) {
-        intent.hasAccel = true;
-        intent.accel[0] = g_phoneAccel0.load(std::memory_order_relaxed);
-        intent.accel[1] = g_phoneAccel1.load(std::memory_order_relaxed);
-        intent.accel[2] = g_phoneAccel2.load(std::memory_order_relaxed);
+    // WARIO: girar el celular inclina igual que la punta de apuntar (misma escala y mismo suavizado),
+    // sin mandar la gravedad cruda. La punta tactil, cuando se usa, tiene prioridad.
+    if (!g_touchAimValid.load(std::memory_order_relaxed) && WarioMotionOn() &&
+        g_phoneAccelValid.load(std::memory_order_relaxed)) {
+        const float phone[3] = {g_phoneAccel0.load(std::memory_order_relaxed),
+                                g_phoneAccel1.load(std::memory_order_relaxed),
+                                g_phoneAccel2.load(std::memory_order_relaxed)};
+        const float tilt = PhoneTiltFromGravity(phone);
+        if (tilt != 0.0f) intent.tilt = tilt;
     }
     return intent;
 }
@@ -580,14 +596,33 @@ void ApplyMotion(Motion& motion, const Intent& intent, WiiRemoteInput::KpadSampl
             motion.filt[k] = motion.filtValid ? motion.filt[k] + (intent.accel[k] - motion.filt[k]) * kPhoneFollow : intent.accel[k];
         }
         motion.filtValid = true;
-        // WARIO: el giro del celular (angulo de la gravedad en el plano y-z) se escala por kPhoneTiltGain;
-        // el giro lateral (x) pasa tal cual.
-        const float yz = std::sqrt(motion.filt[1] * motion.filt[1] + motion.filt[2] * motion.filt[2]);
-        const float phoneAngle = std::clamp(std::atan2(motion.filt[2], -motion.filt[1]) * kPhoneTiltGain,
-                                            -kWarioMaxTilt, kWarioMaxTilt);
-        sample.acc[0] = motion.filt[0];
-        sample.acc[1] = -yz * std::cos(phoneAngle);
-        sample.acc[2] = yz * std::sin(phoneAngle);
+        // WARIO: el giro del celular se mide como rotacion desde el reposo (0, -1, 0) hacia la gravedad
+        // actual, se le quita la zona muerta y se escala por kPhoneTiltGain. Sin atan2 en el plano y-z: con
+        // el celular plano ese angulo no existia y la flecha saltaba o no se movia.
+        const float fx = motion.filt[0], fy = motion.filt[1], fz = motion.filt[2];
+        const float glen = std::sqrt(fx * fx + fy * fy + fz * fz);
+        if (glen > 1e-3f) {
+            const float gx = fx / glen, gz = fz / glen, gy = fy / glen;
+            const float angle = std::acos(std::clamp(-gy, -1.0f, 1.0f));
+            const float turned = std::max(0.0f, angle - kPhoneDeadZone) * kPhoneTiltGain;
+            // Eje del giro: (0,-1,0) x g, siempre horizontal (y = 0), asi que no hay singularidad.
+            const float axisLen = std::sqrt(gz * gz + gx * gx);
+            if (axisLen > 1e-4f && turned > 0.0f) {
+                const float kx = -gz / axisLen, kz = gx / axisLen;
+                const float c = std::cos(turned), s = std::sin(turned);
+                sample.acc[0] = kz * s * glen;
+                sample.acc[1] = -c * glen;
+                sample.acc[2] = -kx * s * glen;
+            } else {
+                sample.acc[0] = 0.0f;
+                sample.acc[1] = -glen;
+                sample.acc[2] = 0.0f;
+            }
+        } else {
+            sample.acc[0] = 0.0f;
+            sample.acc[1] = -1.0f;
+            sample.acc[2] = 0.0f;
+        }
     } else {
         motion.filtValid = false;
         const float angle = motion.tilt * kWarioMaxTilt;
@@ -797,6 +832,12 @@ std::array<bool, PAD_MAX_CONTROLLERS> g_motorRunning{};  // lo que tienen los ma
 // Los pulsos del Wii Remote son cortos (el juego enciende y apaga el motor para dar golpes); los motores de un
 // mando tardan en arrancar, asi que cada pulso vibra al menos kMotorMinNs para que se note.
 constexpr uint64_t kMotorMinNs = 120'000'000ull;
+
+// WARIO: el motor de vibracion del jugador 1 (el que el juego enciende al golpear o sacudir), para que el
+// celular vibre cuando vibra el mando. Respeta [controller] rumble.
+bool PhoneRumbleOn() {
+    return PAD_HLE_RumbleEnabled() && g_motorOn[0].load(std::memory_order_relaxed);
+}
 
 void SendMotor(uint32_t chan, bool on) {
     // Intensidad: [gamepad] wario_rumble_strength = "0".."100" (launcher, Controles); por defecto al maximo.

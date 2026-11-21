@@ -13,6 +13,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.os.Vibrator;
+import android.os.VibrationEffect;
 import android.os.PowerManager;
 import android.os.Process;
 import android.view.Choreographer;
@@ -59,6 +62,7 @@ public class GameActivity extends SDLActivity {
     public static native void nativeSetDisplayClock(long vblankNanos, double hz);
     public static native void nativeReportThermalHeadroom(float headroom);
     public static native void nativeSetPhoneAccel(float x, float y, float z, boolean valid);
+    public static native boolean nativePhoneRumble();
     public static native void nativeSetTouchAim(float x, float y, float viewWidth, float viewHeight);
 
     private static final float GRAVITY = 9.80665f;
@@ -157,6 +161,31 @@ public class GameActivity extends SDLActivity {
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
         }
     };
+
+    // WARIO: the phone vibrates while the game rumbles (nativePhoneRumble, [controller] rumble). Polled, like
+    // the settings: the game's motor is on for short pulses, so each one gets a buzz of its own.
+    private long lastBuzzMs;
+    private final Runnable rumblePoll = new Runnable() {
+        @Override
+        public void run() {
+            if (nativePhoneRumble()) {
+                long now = SystemClock.uptimeMillis();
+                if (now - lastBuzzMs >= 100) {
+                    lastBuzzMs = now;
+                    buzz(120);
+                }
+            }
+            handler.postDelayed(this, 30);
+        }
+    };
+
+    private void buzz(long ms) {
+        Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator == null || !vibrator.hasVibrator()) {
+            return;
+        }
+        vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+    }
 
     private void endMotionShakeNow() {
         if (overlay != null) {
@@ -423,6 +452,8 @@ public class GameActivity extends SDLActivity {
         super.onResume();
         startDisplayClock();
         startPhoneMotion();
+        handler.removeCallbacks(rumblePoll);
+        handler.post(rumblePoll);
         if (inputManager == null) {
             inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
         }
@@ -489,6 +520,11 @@ public class GameActivity extends SDLActivity {
             overlay.releaseAll();
         }
         displayClockOn = false;
+        handler.removeCallbacks(rumblePoll);
+        Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator != null) {
+            vibrator.cancel();
+        }
         stopPhoneMotion();
         if (gamepadListenerOn && inputManager != null) {
             inputManager.unregisterInputDeviceListener(gamepadListener);

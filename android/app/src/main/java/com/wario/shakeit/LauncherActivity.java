@@ -439,6 +439,10 @@ public class LauncherActivity extends Activity {
     private void buildControls() {
         header(t("Controles", "Controls"), t("Qué hace cada botón táctil. El juego usa un Wii Remote de lado.",
                 "What each touch button does. The game uses a sideways Wii Remote."));
+        section(t("Movimiento", "Motion"));
+        motionCheck();
+        check(t("Vibración del celular", "Phone vibration"), "controller", "rumble", true,
+                t("El celular vibra cuando el juego vibra el mando.", "The phone buzzes when the game rumbles the remote."));
         section(t("Botones táctiles", "Touch buttons"));
         String[] labels = {
             t("Mostrar siempre", "Always show"),
@@ -614,10 +618,24 @@ public class LauncherActivity extends Activity {
                 pad ? GOOD : MUTED);
     }
 
+    // Girar el celular (gamepad.wario_motion): on/off, como el sensor de un mando.
+    private void motionCheck() {
+        CheckBox box = new CheckBox(this);
+        box.setText(t("Movimiento del celular (inclinar como el Wii Remote)", "Phone motion (tilt like a Wii Remote)"));
+        box.setTextColor(TEXT);
+        box.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        box.setButtonTintList(ColorStateList.valueOf(GOLD));
+        box.setChecked(!"off".equals(getString("gamepad", "wario_motion", "on")));
+        box.setOnCheckedChangeListener((b, checked) -> put("gamepad", "wario_motion", checked ? "\"on\"" : "\"off\""));
+        page.addView(box, wrap(0, dp(8), 0, 0));
+        page.addView(text(t("Girar el teléfono mueve la flecha del cañón, igual que la punta de apuntar.",
+                "Turning the phone moves the cannon arrow, like the aim tip."), 12, MUTED), wrap(dp(34), 0, 0, dp(4)));
+    }
+
     private void widescreenCheck() {
         check("True 16:9 in levels (experimental)",
-                // Same default as the runtime on Android (WarioFullWide): off unless the player turns it on.
-                "video", "full_widescreen", false,
+                // Same default as the runtime on Android (WarioFullWide): on unless the player turns it off.
+                "video", "full_widescreen", true,
                 "Removes the side panels so the level fills the whole screen. Experimental: parts of the sides may be empty. Applies when the game starts.");
     }
 
