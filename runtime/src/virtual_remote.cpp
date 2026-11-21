@@ -497,6 +497,15 @@ Intent GamepadIntent() {
         if (held(kPlus)) intent.buttons |= kWpadPlus;
         if (held(kMinus)) intent.buttons |= kWpadMinus;
         intent.shake = intent.shake || held(kShake);
+        // WARIO: el stick cambia de golpe, asi que la flecha lo sigue con su propio suavizado (el dedo tarda mas en
+        // llegar). Cuando el stick se suelta, la flecha termina de llegar al ultimo angulo y se queda ahi.
+        {
+            constexpr float kStickFollow = 0.1f;  // fraccion del camino por cuadro (60 Hz): ~100 ms
+            static float s_stickTarget = 0.0f, s_stickOut = 0.0f;
+            if (stickTilt != 0.0f) s_stickTarget = stickTilt;
+            s_stickOut += (s_stickTarget - s_stickOut) * kStickFollow;
+            stickTilt = (stickTilt != 0.0f || std::fabs(s_stickOut - s_stickTarget) > 0.005f) ? s_stickOut : 0.0f;
+        }
         const float tilt = ((held(kTiltRight) ? 1.0f : 0.0f) - (held(kTiltLeft) ? 1.0f : 0.0f)) * kWarioButtonTilt;
         if (tilt != 0.0f) intent.tilt = tilt;
         else if (stickTilt != 0.0f) intent.tilt = stickTilt;
