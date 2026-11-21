@@ -13,12 +13,12 @@ This fork adds android support with full editable touch controls, ultrawide with
 and rotate the phone as if it were a Wii Remote for certain game functions.
 
 <p align="center">
-  <img src="screenshots/game-1.png" width="32%" alt="Wario Land: Shake It! on PC">
-  <img src="screenshots/game-2.png" width="32%" alt="A level">
-  <img src="screenshots/game-3.png" width="32%" alt="A level">
+  <img src="screenshots/game-menu.jpeg" width="32%" alt="Wario Land: Shake It! on PC">
+  <img src="screenshots/level.jpeg" width="32%" alt="A level">
+  <img src="screenshots/level-2.jpeg" width="32%" alt="A level">
 </p>
 <p align="center">
-  <img src="screenshots/launcher.png" width="70%" alt="The launcher">
+  <img src="screenshots/launcher-android.jpeg" width="70%" alt="The launcher">
 </p>
 
 ## Features
