@@ -360,8 +360,9 @@ public class TouchOverlay extends View {
             return;
         }
         if (id == aimPointer) {
-            // Lifting the finger leaves the arrow where it was.
+            // Lifting the finger leaves the arrow where it was (the runtime keeps the angle, or the phone takes over).
             aimPointer = -1;
+            GameActivity.nativeReleaseTouchAim();
             return;
         }
         pointerControl.delete(id);
@@ -429,6 +430,10 @@ public class TouchOverlay extends View {
     }
 
     void releaseAll() {
+        if (aimPointer != -1) {
+            aimPointer = -1;
+            GameActivity.nativeReleaseTouchAim();
+        }
         pointerControl.clear();
         pointerInput.clear();
         sendInput();

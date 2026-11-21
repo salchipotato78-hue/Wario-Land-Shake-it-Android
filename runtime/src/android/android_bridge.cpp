@@ -173,6 +173,12 @@ JNIEXPORT jfloatArray JNICALL Java_com_wario_shakeit_GameActivity_nativeTakeSett
     return result;
 }
 
+// GameActivity.nativeReleaseTouchAim: the finger lifted off the aim tip.
+JNIEXPORT void JNICALL Java_com_wario_shakeit_GameActivity_nativeReleaseTouchAim(JNIEnv*, jclass)
+{
+    VirtualRemote::ReleaseTouchAim();
+}
+
 // GameActivity.nativePhoneRumble: whether the game is rumbling right now (the phone then vibrates).
 JNIEXPORT jboolean JNICALL Java_com_wario_shakeit_GameActivity_nativePhoneRumble(JNIEnv*, jclass)
 {

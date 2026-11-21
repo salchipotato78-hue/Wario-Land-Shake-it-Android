@@ -63,6 +63,7 @@ public class GameActivity extends SDLActivity {
     public static native void nativeReportThermalHeadroom(float headroom);
     public static native void nativeSetPhoneAccel(float x, float y, float z, boolean valid);
     public static native boolean nativePhoneRumble();
+    public static native void nativeReleaseTouchAim();
     public static native void nativeSetTouchAim(float x, float y, float viewWidth, float viewHeight);
 
     private static final float GRAVITY = 9.80665f;

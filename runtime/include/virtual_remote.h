@@ -43,6 +43,7 @@ void SetPhoneAccel(float x, float y, float z, bool valid);
 void SetTouchAim(float x, float y, float viewWidth, float viewHeight);
 // True while a touch button (TouchButton bits) is held. The intro skip reads the touch A button.
 bool TouchButtonHeld(uint32_t touchButton);
+void ReleaseTouchAim();  // the finger lifted off the aim tip
 bool PhoneRumbleOn();  // the game's rumble for player 1, for the phone's vibrator
 
 } // namespace VirtualRemote

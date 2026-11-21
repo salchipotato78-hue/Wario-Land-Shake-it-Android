@@ -95,10 +95,20 @@ constexpr float kWarioButtonTilt = 30.0f / 85.0f;
 // its phone at 0.3 per frame (kTiltFollow): slow enough that a hand's small movements don't jolt the
 // tilt, quick enough that it still follows the turn. Was 0.6, which passed every jolt through.
 constexpr float kPhoneFollow = 0.12f;
-// WARIO: el Wii Remote mide la gravedad (acelerometro ADXL330, +-3 g) y el juego usa ese angulo tal cual:
-// 1:1, sin zona muerta ni escala. El celular hace lo mismo (fraccion 1 = 1:1 con el angulo real).
+// WARIO: cuantos grados de giro del celular llevan la flecha a su maximo (85 grados). Asi el celular se
+// calibra contra la punta tactil: mas grados = mas lento. [gamepad] wario_motion_range (launcher, Controles).
+// Sensor-path constants (ApplyMotion): 1:1, no dead zone. The phone's tilt now uses PhoneFullTiltRad.
 constexpr float kPhoneTiltGain = 1.0f;
 constexpr float kPhoneDeadZone = 0.0f;
+
+float PhoneFullTiltRad() {
+    static const float rad = [] {
+        const std::string v = RuntimeConfigFile::GamepadBinding("wario_motion_range");
+        const int deg = v.empty() ? 90 : std::atoi(v.c_str());
+        return std::clamp(deg, 60, 240) * 0.017453292f;
+    }();
+    return rad;
+}
 // Sacudir: mientras se mantiene, impulso alterno de +-3.46 g (decayendo dentro de cada mitad) en el eje
 // vertical del mando (KPAD y), que cambia cada 5 cuadros (6 Hz), como el 6 Hz +-90/26 g de portWario; una pulsacion corta dura 10 cuadros.
 constexpr float kWarioShakeG = 3.46f;
@@ -501,7 +511,7 @@ float PhoneTiltFromGravity(const float* acc) {
     const float axisLen = std::sqrt(gz * gz + gx * gx);
     if (!(axisLen > 1e-4f)) return 0.0f;
     const float kx = -gz / axisLen;
-    return std::clamp(-kx * angle / kWarioMaxTilt, -1.0f, 1.0f);
+    return std::clamp(-kx * angle / PhoneFullTiltRad(), -1.0f, 1.0f);
 }
 
 // The on-screen remote and phone motion set through SetTouchState.
@@ -523,9 +533,14 @@ Intent TouchIntent() {
     intent.tilt = std::clamp(g_touchTilt.load(std::memory_order_relaxed), -1.0f, 1.0f);
     // WARIO: el dedo apunta como el stick izquierdo (mismo calculo que GamepadIntent): la direccion del dedo desde
     // el centro de la imagen da el angulo de inclinacion, hasta 85 grados. Al soltar, el angulo se queda.
-    if (g_touchAimValid.load(std::memory_order_relaxed)) {
-        static int s_touchSide = 1;
-        static float s_touchTiltHeld = 0.0f;
+    // WARIO: el dedo sobre la punta de apuntar manda mientras esta apretado. Al soltar el angulo se queda, salvo
+    // que el movimiento del celular este activado: entonces manda el celular (ya no hay un bloqueo permanente).
+    static int s_touchSide = 1;
+    static float s_touchTiltHeld = 0.0f;
+    static bool s_touchAimUsed = false;
+    const bool aimDown = g_touchAimValid.load(std::memory_order_relaxed);
+    if (aimDown) {
+        s_touchAimUsed = true;
         const float fx = g_touchAimPosX.load(std::memory_order_relaxed);
         const float fy = -g_touchAimPosY.load(std::memory_order_relaxed);  // +y up
         const float mag = std::sqrt(fx * fx + fy * fy);
@@ -536,16 +551,34 @@ Intent TouchIntent() {
             s_touchTiltHeld = (s_touchSide > 0 ? elev : -elev) / 85.0f;
         }
         intent.tilt = s_touchTiltHeld;
-    }
-    // WARIO: girar el celular inclina igual que la punta de apuntar (misma escala y mismo suavizado),
-    // sin mandar la gravedad cruda. La punta tactil, cuando se usa, tiene prioridad.
-    if (!g_touchAimValid.load(std::memory_order_relaxed) && WarioMotionOn() &&
-        g_phoneAccelValid.load(std::memory_order_relaxed)) {
+    } else if (WarioMotionOn() && g_phoneAccelValid.load(std::memory_order_relaxed)) {
+        // WARIO: girar el celular inclina igual que la punta de apuntar (misma escala y mismo suavizado),
+        // sin mandar la gravedad cruda.
         const float phone[3] = {g_phoneAccel0.load(std::memory_order_relaxed),
                                 g_phoneAccel1.load(std::memory_order_relaxed),
                                 g_phoneAccel2.load(std::memory_order_relaxed)};
-        const float tilt = PhoneTiltFromGravity(phone);
-        if (tilt != 0.0f) intent.tilt = tilt;
+        // WARIO: zona de quietud: el temblor de la mano no mueve la flecha. Solo se actualiza si el celular cambio
+        // mas de kPhoneStillBand (1.7 grados aprox.) desde la ultima posicion; un giro normal lo supera en un cuadro.
+        static float s_phoneHeld = 0.0f;
+        static bool s_phoneHeldValid = false;
+        constexpr float kPhoneStillBand = 0.02f;
+        const float raw = PhoneTiltFromGravity(phone);
+        if (!s_phoneHeldValid || std::fabs(raw - s_phoneHeld) > kPhoneStillBand) {
+            s_phoneHeld = raw;
+            s_phoneHeldValid = true;
+        }
+        intent.tilt = s_phoneHeld;
+        // WARIO: diagnostico (cada 250 ms): aceleracion del celular, angulo en grados (85 = flecha al maximo),
+        // inclinacion cruda y la que se manda a la flecha despues de la zona de quietud.
+        static uint64_t s_phoneLogNs = 0;
+        const uint64_t nowNs = SDL_GetTicksNS();
+        if (nowNs - s_phoneLogNs > 250'000'000ull) {
+            s_phoneLogNs = nowNs;
+            RT_LOGF(RT_TAG_RUNTIME, "[phone] acc %.2f %.2f %.2f angle %.1f raw %.3f sent %.3f\n", phone[0], phone[1],
+                    phone[2], raw * 85.0f, raw, s_phoneHeld);
+        }
+    } else if (s_touchAimUsed) {
+        intent.tilt = s_touchTiltHeld;
     }
     return intent;
 }
@@ -705,6 +738,11 @@ void SetTouchAim(float x, float y, float viewWidth, float viewHeight) {
     g_touchAimPosX.store(std::clamp((x - w * 0.5f) / (viewW * 0.5f), -1.0f, 1.0f), std::memory_order_relaxed);
     g_touchAimPosY.store(std::clamp((y - h * 0.5f) / (pictureH * 0.5f), -1.0f, 1.0f), std::memory_order_relaxed);
     g_touchAimValid.store(true, std::memory_order_relaxed);
+}
+
+// WARIO: the finger lifted off the aim tip. The angle stays unless the phone's motion is on.
+void ReleaseTouchAim() {
+    g_touchAimValid.store(false, std::memory_order_relaxed);
 }
 
 void SetTouchState(uint32_t touchButtons, bool shake, float tilt) {

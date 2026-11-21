@@ -630,6 +630,23 @@ public class LauncherActivity extends Activity {
         page.addView(box, wrap(0, dp(8), 0, 0));
         page.addView(text(t("Girar el teléfono mueve la flecha del cañón, igual que la punta de apuntar.",
                 "Turning the phone moves the cannon arrow, like the aim tip."), 12, MUTED), wrap(dp(34), 0, 0, dp(4)));
+        row(t("Alcance del giro", "Turn range"), rangePicker());
+    }
+
+    // Degrees of phone turn that take the arrow to its full 85 degrees: more is slower. [gamepad] wario_motion_range.
+    private View rangePicker() {
+        final int[] degs = {90, 120, 160, 200};
+        String[] labels = {t("90° (rápido)", "90° (fast)"), "120°", "160°", "200°"};
+        int current = 0;
+        try {
+            int saved = Integer.parseInt(getString("gamepad", "wario_motion_range", "90"));
+            for (int i = 0; i < degs.length; ++i) {
+                if (degs[i] == saved) current = i;
+            }
+        } catch (NumberFormatException e) {
+            current = 0;
+        }
+        return picker(labels, current, i -> put("gamepad", "wario_motion_range", "\"" + degs[i] + "\""));
     }
 
     private void widescreenCheck() {
