@@ -139,7 +139,9 @@ extern "C" void GX__SetScissor_80173430(uint32_t l, uint32_t t, uint32_t w, uint
     // Full 16:9 (wario_widescreen.cpp): the stage camera (applied from 0x80369C04) clips the level
     // to a 4:3 window, 480 x 480 centred in the 640x480 anamorphic EFB; open it to the whole screen.
     if (l == 80u && t == 0u && w == 480u && h == 480u && WarioFullWide()) {
-        if (const CpuContext* cpu = TryGetCpuContext(); cpu != nullptr && cpu->lr == 0x80369C04u) { l = 0u; w = 640u; }
+        // WARIO: antes solo se abria cuando la llamada venia de la camara (lr 0x80369C04); en otras escenas
+        // que usan el mismo recorte 4:3 quedaban cosas incompletas a los lados. Ahora se abre siempre.
+        l = 0u; w = 640u;
     }
     g_scissorLeft=(int32_t)l; g_scissorTop=(int32_t)t; g_scissorWidth=(int32_t)w; g_scissorHeight=(int32_t)h;
     try { uint32_t gd=Memory::Read32(kGXDataPtrAddr); if(gd){

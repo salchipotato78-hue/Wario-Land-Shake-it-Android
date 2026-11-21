@@ -42,8 +42,9 @@ public class TouchOverlay extends View {
     private static final String[] IDS = {"joy", "one", "two", "a", "plus", "minus", "shake"};
     private static final String[] LABELS = {"Stick", "1", "2", "A", "+", "-", "Shake"};
     // Defaults as fractions of the screen (center x, center y), for a landscape phone.
-    private static final float[] DEF_X = {0.11f, 0.82f, 0.93f, 0.70f, 0.94f, 0.84f, 0.50f};
-    private static final float[] DEF_Y = {0.68f, 0.86f, 0.66f, 0.84f, 0.10f, 0.10f, 0.90f};
+    // WARIO: distribucion de las capturas del juego (stick abajo a la izquierda, A/1/2 a la derecha, +/- arriba).
+    private static final float[] DEF_X = {0.11f, 0.79f, 0.91f, 0.70f, 0.94f, 0.84f, 0.79f};
+    private static final float[] DEF_Y = {0.75f, 0.71f, 0.70f, 0.71f, 0.10f, 0.10f, 0.89f};
     // Image per control (every control has artwork now; 0 would mean drawn in code).
     private static final int[] RES = {
             R.drawable.joystick, R.drawable.btn_one, R.drawable.btn_two, R.drawable.btn_a,

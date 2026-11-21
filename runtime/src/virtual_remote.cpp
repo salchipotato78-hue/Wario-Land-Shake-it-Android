@@ -94,7 +94,10 @@ constexpr float kWarioButtonTilt = 30.0f / 85.0f;
 // Share of the way the phone's gravity moves toward each new reading per frame. NSMB's tilt follows
 // its phone at 0.3 per frame (kTiltFollow): slow enough that a hand's small movements don't jolt the
 // tilt, quick enough that it still follows the turn. Was 0.6, which passed every jolt through.
-constexpr float kPhoneFollow = 0.3f;
+constexpr float kPhoneFollow = 0.12f;
+// WARIO: el giro del celular se copia con esta fraccion (1 = 1:1). Con 1:1 el puntero/inclinacion iba mas
+// rapido que con el Wii Remote original; 0.6 deja el mismo gesto mas suave.
+constexpr float kPhoneTiltGain = 0.6f;
 // Sacudir: mientras se mantiene, impulso alterno de +-3.46 g (decayendo dentro de cada mitad) en el eje
 // vertical del mando (KPAD y), que cambia cada 5 cuadros (6 Hz), como el 6 Hz +-90/26 g de portWario; una pulsacion corta dura 10 cuadros.
 constexpr float kWarioShakeG = 3.46f;
@@ -575,9 +578,16 @@ void ApplyMotion(Motion& motion, const Intent& intent, WiiRemoteInput::KpadSampl
     if (useSensor) {
         for (int k = 0; k < 3; ++k) {
             motion.filt[k] = motion.filtValid ? motion.filt[k] + (intent.accel[k] - motion.filt[k]) * kPhoneFollow : intent.accel[k];
-            sample.acc[k] = motion.filt[k];
         }
         motion.filtValid = true;
+        // WARIO: el giro del celular (angulo de la gravedad en el plano y-z) se escala por kPhoneTiltGain;
+        // el giro lateral (x) pasa tal cual.
+        const float yz = std::sqrt(motion.filt[1] * motion.filt[1] + motion.filt[2] * motion.filt[2]);
+        const float phoneAngle = std::clamp(std::atan2(motion.filt[2], -motion.filt[1]) * kPhoneTiltGain,
+                                            -kWarioMaxTilt, kWarioMaxTilt);
+        sample.acc[0] = motion.filt[0];
+        sample.acc[1] = -yz * std::cos(phoneAngle);
+        sample.acc[2] = yz * std::sin(phoneAngle);
     } else {
         motion.filtValid = false;
         const float angle = motion.tilt * kWarioMaxTilt;
