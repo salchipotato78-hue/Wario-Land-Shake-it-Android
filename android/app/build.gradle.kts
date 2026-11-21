@@ -21,7 +21,7 @@ android {
         // Android installs an update only over an older versionCode. CI sets WARIO_VERSION_CODE to the
         // run number, so every build can update the one before it.
         versionCode = System.getenv("WARIO_VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = System.getenv("WARIO_VERSION_NAME")?.takeIf { it.isNotEmpty() } ?: "0.1.0"
+        versionName = System.getenv("WARIO_VERSION_NAME")?.takeIf { it.isNotEmpty() } ?: "0.1.1"
 
         ndk {
             abiFilters += listOf("arm64-v8a")

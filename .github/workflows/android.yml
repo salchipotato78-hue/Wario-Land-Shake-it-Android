@@ -330,7 +330,7 @@ jobs:
           WARIO_CCACHE: "1"
           # One increasing number per run, so an update is always newer than the app on the phone.
           WARIO_VERSION_CODE: ${{ github.run_number }}
-          WARIO_VERSION_NAME: "0.1.${{ github.run_number }}"
+          WARIO_VERSION_NAME: "0.1.1"
           WARIO_KEYSTORE_PASSWORD: ${{ secrets.WARIO_KEYSTORE_PASSWORD }}
           WARIO_KEY_ALIAS: ${{ secrets.WARIO_KEY_ALIAS }}
           WARIO_KEY_PASSWORD: ${{ secrets.WARIO_KEY_PASSWORD }}
