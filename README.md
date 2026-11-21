@@ -1,13 +1,16 @@
-# WarioRecomp — Wario Land: Shake It! for PC
+# WarioRecomp — Wario Land: Shake It! for PC now for Android
 
 > ⚠️ **Testing build.** The game boots, saves and is playable, but parts of it are still untested: expect
 > graphical glitches, crashes or features that don't respond yet. If you find one, please open an *issue* and
-> attach the log (`Play\UserData\Logs\...\console.log`, or the launcher's **Log** page).
+> attach the log (`storage/emulated/0(Android/data/com.wario.shakeit/files/Logs`), or the launcher's **Log** page).
 
 **WarioRecomp** is an unofficial native PC port of *Wario Land: Shake It!* (Wii, 2008, US release `RWLE01`),
 by **Santiago109**. The game's PowerPC code is **statically recompiled** to C++ with
 [WiiCompiled](https://github.com/patchzyy/Wiicompiled) and runs as a regular Windows program, **not in an
 emulator**: the Wii system libraries (video, audio, controllers, disc, saves) are replaced with native code.
+
+This fork adds android support with full editable touch controls, ultrawide without stretching, 
+and rotate the phone as if it were a Wii Remote for certain game functions.
 
 <p align="center">
   <img src="screenshots/game-1.png" width="32%" alt="Wario Land: Shake It! on PC">
@@ -24,22 +27,15 @@ emulator**: the Wii system libraries (video, audio, controllers, disc, saves) ar
 - **Aspect ratio:** true 16:9 widescreen (the game itself draws wider), fill the window, cinematic 2.39:1, or
   the original 4:3.
 - **Windowed, borderless or exclusive fullscreen** (F11 switches in game), VSync and an FPS counter.
-- **Direct3D 12 or Vulkan** (through Aurora / Dawn).
 - **Experimental frame interpolation** to 120 FPS.
-- **Gamepad and keyboard** with full remapping: Xbox, PlayStation (DualSense / DualShock 4) and Nintendo Pro
-  Controller.
-- **Wii Remote motion:**
-  - **shake** with L2/R2 (continuous shaking while held, like on the Wii);
-  - **tilt** with L1/R1 (30°) or with the **left stick**, which aims up to 85° in the direction you push;
-  - **DualSense accelerometer** *(in testing)*: on by default. Tilt the controller itself like a sideways Wii Remote;
-    the left stick, L1/R1 (tilt) and L2/R2 (shake) work at the same time and take over while held. Click the
-    touchpad to turn the sensors off.
-- **Skippable intro** with one button (or shortened to a single frame).
+- **Gamepad and keyboard** with full remapping: Xbox, PlayStation (DualSense / DualShock 4), Nintendo Pro
+  Controller and Android handheld (tested with DualShock 4)
+- **Wii Remote motion:** You can rotate the phone or use the shake and the yellow circle buttons on the screen, with a
+- controller you can remap the buttons for doing that
+- **Skippable intro** with one button (the skip button on screen).
 - **Launcher** with display, graphics, audio, game and controls settings, disc import, save backups, the game
   log and one-click install.
-- **Import the game from your own disc image:** `.iso`, `.wbfs`, `.ciso`, `.rvz`, `.wia` or `.gcz`.
 - **Automatic save backups** before every start (the last 10 are kept).
-- **Texture packs:** dump the game's textures and load high-resolution replacements.
 - Game language (English, Spanish, French) and launcher language (English, Spanish).
 
 ## Game data
@@ -61,14 +57,12 @@ port on your PC**, the same way the WiiCompiled installer does.
 
 The download (~250 MB) already includes the compiler and every build tool, so installing needs no internet.
 
-**Steps**
+**Steps** (once on the phone)
 
-1. Download the latest release (`WarioRecomp-<version>.zip`) and unzip it to a folder, e.g. `D:\WarioRecomp`.
-2. Open `WarioLauncher.exe`. Windows may warn because it isn't signed: *More info → Run anyway*.
-3. The launcher opens on **Install**: press **Install**, then pick your disc image and the folder to extract it to.
-4. Wait while it extracts the game and builds the port on your PC (15 to 45 minutes depending on the PC); the
-   progress is shown on the page.
-5. Press **PLAY**.
+1. Download the latest release (`WarioRecomp.apk-<version>-`) and install it.
+2. Open the app.
+3. press **Install**, then pick your extracted game copy in a zip (the DATA folder)
+4. Wait while it extracts the game, when it finishes the app starts the game automatically
 
 ## Controls
 
@@ -86,25 +80,23 @@ The download (~250 MB) already includes the compiler and every build tool, so in
 | Motion sensors off / on | — | Touchpad click |
 | Skip the intro | Enter / Space / X | ✕ / ○ / Options |
 
-Xbox and Nintendo controllers use the same button positions. In game, **F10** opens the port's menu and **F11**
-toggles window / fullscreen. Everything can be remapped on the launcher's **Controls** page, where you can also
-choose whether the left stick tilts/aims or moves, and invert the sensor axes.
+Xbox and Nintendo controllers use the same button positions. Everything can be remapped on the launcher's **Controls** page.
 
 ## The launcher
 
 | Page | What's there |
 |---|---|
 | Home | Quick settings, game status and the PLAY button |
-| Display | Window mode, window size, aspect ratio, VSync, FPS counter |
-| Graphics | Render resolution, frame interpolation, Direct3D 12 / Vulkan, GPU compatibility, textures |
+| Display | Aspect ratio, VSync, FPS counter |
+| Graphics | Render resolution, frame interpolation, textures (not tested) |
 | Audio | Master volume, mute, audio mixing thread |
-| Game | Game folder, disc import, saves folder, game language, intro, save backups |
-| Controls | Keyboard and gamepad mapping per action, motion and sensors, rumble |
-| Advanced | Launcher language, desktop shortcut, folders, clear the shader cache, credits |
-| Install | Import the disc and build / rebuild the port |
+| Game | Data import, game language, save backups |
+| Controls | Gamepad mapping per action, rumble |
+| Advanced | Launcher language, credits |
+| Install | Import the game data in a zip |
 | Log | The latest game log, ready to paste into an *issue* |
 
-Until the port is installed, only **Install** and **Log** are available. The language button at the bottom of
+The language button at the bottom of
 the left menu switches English / Spanish at any time. Settings are stored in `Play\UserData\Config.toml` (the
 in-game F10 menu changes the same values). The header image and the icon live in `local-assets\`
 (`launcher_banner.jpg`, `wario.ico`); both use fan art by **Dreaminerryday**. To use your own header,
@@ -156,7 +148,7 @@ The first time, point the build at your game: import it in the launcher, or run
 ## Status
 
 Working: boot, intro (and skipping it), menus, saves (create, load, save), the world map, the levels tested so
-far, audio, 16:9, gamepad and keyboard. Still to test or to do:
+far, audio, ultrawide, gamepad. Still to test or to do:
 
 - Playing through the whole game (bosses, every level and the 12 story movies).
 - The DualSense accelerometer, and shaking everywhere the game asks for it.
