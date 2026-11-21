@@ -144,6 +144,25 @@ int WarioLeftStickMode() {  // 0 aim, 1 tilt, 2 dpad
     }();
     return mode;
 }
+// [gamepad] wario_aim_stick = "left" | "right" (por defecto left): el stick que apunta o inclina el mando.
+bool WarioAimStickRight() {
+    static const bool right = RuntimeConfigFile::GamepadBinding("wario_aim_stick") == "right";
+    return right;
+}
+
+// [gamepad] wario_move_stick = "none" | "left" | "right": el stick que mueve a Wario (sin cruceta). Por defecto el
+// derecho (el izquierdo apunta); el modo antiguo wario_left_stick = "dpad" mueve con el izquierdo, como antes.
+int WarioMoveStick() {  // 0 none, 1 left, 2 right
+    static const int mode = [] {
+        const std::string v = RuntimeConfigFile::GamepadBinding("wario_move_stick");
+        if (v == "left") return 1;
+        if (v == "right") return 2;
+        if (v == "none") return 0;
+        return WarioLeftStickMode() == 2 ? 1 : 2;
+    }();
+    return mode;
+}
+
 std::atomic<int> g_warioMotionState{-1};  // -1 = aun sin leer Config.toml
 bool WarioMotionOn() {
     int v = g_warioMotionState.load();
@@ -423,8 +442,13 @@ Intent GamepadIntent() {
         if (held(kUp)) intent.buttons |= kScreenUp;
         if (held(kDown)) intent.buttons |= kScreenDown;
         // WARIO: el stick izquierdo inclina/apunta el mando (por defecto) o mueve la cruceta.
-        const float sx = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
-        const float sy = -SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;  // +y up
+        const bool aimRight = WarioAimStickRight();
+        const float sx = SDL_GetGamepadAxis(gamepad, aimRight ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
+        const float sy = -SDL_GetGamepadAxis(gamepad, aimRight ? SDL_GAMEPAD_AXIS_RIGHTY : SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;  // +y up
+        // WARIO: el stick que mueve a Wario es aparte del que apunta (wario_move_stick).
+        const int moveStick = WarioMoveStick();
+        const float mx = SDL_GetGamepadAxis(gamepad, moveStick == 2 ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
+        const float my = -SDL_GetGamepadAxis(gamepad, moveStick == 2 ? SDL_GAMEPAD_AXIS_RIGHTY : SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
         constexpr float kStickMin = kStickThreshold / 127.0f;
         const int stickMode = WarioLeftStickMode();
         float stickTilt = 0.0f;
@@ -443,9 +467,9 @@ Intent GamepadIntent() {
             const float ax = std::fabs(sx) < 0.16f ? 0.0f : (sx - std::copysign(0.16f, sx)) / 0.84f;
             stickTilt = std::clamp(ax, -1.0f, 1.0f);
         }
-        if (stickMode == 2 && sx * sx + sy * sy >= kStickMin * kStickMin) {
-            if (std::fabs(sx) >= kDiagonalSlope * std::fabs(sy)) intent.buttons |= sx < 0 ? kScreenLeft : kScreenRight;
-            if (std::fabs(sy) >= kDiagonalSlope * std::fabs(sx)) intent.buttons |= sy < 0 ? kScreenDown : kScreenUp;
+        if (moveStick != 0 && mx * mx + my * my >= kStickMin * kStickMin) {
+            if (std::fabs(mx) >= kDiagonalSlope * std::fabs(my)) intent.buttons |= mx < 0 ? kScreenLeft : kScreenRight;
+            if (std::fabs(my) >= kDiagonalSlope * std::fabs(mx)) intent.buttons |= my < 0 ? kScreenDown : kScreenUp;
         }
         if (held(kJump)) intent.buttons |= kWpadTwo;
         if (held(kRun)) intent.buttons |= kWpadOne;

@@ -443,6 +443,20 @@ public class LauncherActivity extends Activity {
         motionCheck();
         check(t("Vibración del celular", "Phone vibration"), "controller", "rumble", true,
                 t("El celular vibra cuando el juego vibra el mando.", "The phone buzzes when the game rumbles the remote."));
+        section(t("Mando", "Gamepad"));
+        row(t("Stick que apunta / inclina", "Stick that aims / tilts"),
+                choicePicker("wario_aim_stick", new String[] {"left", "right"},
+                        new String[] {t("Izquierdo", "Left"), t("Derecho", "Right")}, "left"));
+        row(t("Qué hace ese stick", "What that stick does"),
+                choicePicker("wario_left_stick", new String[] {"aim", "tilt"},
+                        new String[] {t("Apuntar (dirección)", "Aim (direction)"), t("Solo inclinar (eje X)", "Tilt only (X axis)")},
+                        "aim"));
+        row(t("Stick que mueve a Wario", "Stick that moves Wario"),
+                choicePicker("wario_move_stick", new String[] {"none", "left", "right"},
+                        new String[] {t("Ninguno (cruceta)", "None (d-pad)"), t("Izquierdo", "Left"), t("Derecho", "Right")},
+                        "dpad".equals(getString("gamepad", "wario_left_stick", "aim")) ? "left" : "right"));
+        info(t("Si el mismo stick apunta y mueve, hace las dos cosas a la vez.",
+               "If the same stick aims and moves, it does both at once."), MUTED);
         section(t("Botones táctiles", "Touch buttons"));
         String[] labels = {
             t("Mostrar siempre", "Always show"),
@@ -631,6 +645,16 @@ public class LauncherActivity extends Activity {
         page.addView(text(t("Girar el teléfono mueve la flecha del cañón, igual que la punta de apuntar.",
                 "Turning the phone moves the cannon arrow, like the aim tip."), 12, MUTED), wrap(dp(34), 0, 0, dp(4)));
         row(t("Alcance del giro", "Turn range"), rangePicker());
+    }
+
+    // A gamepad option: one of the values in Config.toml's [gamepad], with its label shown.
+    private View choicePicker(final String key, final String[] values, String[] labels, String def) {
+        String current = getString("gamepad", key, def);
+        int index = 0;
+        for (int i = 0; i < values.length; ++i) {
+            if (values[i].equals(current)) index = i;
+        }
+        return picker(labels, index, i -> put("gamepad", key, "\"" + values[i] + "\""));
     }
 
     // Degrees of phone turn that take the arrow to its full 85 degrees: more is slower. [gamepad] wario_motion_range.
