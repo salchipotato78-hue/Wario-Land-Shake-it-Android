@@ -408,6 +408,18 @@ Intent GamepadIntent() {
             if (s_failed != ids[i]) { s_failed = ids[i]; RT_LOGF(RT_TAG_CONFIG, "[gamepad] cannot open pad %u: %s\n", unsigned(ids[i]), SDL_GetError()); }
             continue;
         }
+        // WARIO: DualSense / DualShock 4 con luz: amarillo al detectarlo (una vez por mando).
+        {
+            static std::vector<SDL_JoystickID> s_lit;
+            const SDL_GamepadType type = SDL_GetGamepadType(gamepad);
+            if ((type == SDL_GAMEPAD_TYPE_PS5 || type == SDL_GAMEPAD_TYPE_PS4) &&
+                std::find(s_lit.begin(), s_lit.end(), ids[i]) == s_lit.end()) {
+                s_lit.push_back(ids[i]);
+                const bool lit = SDL_SetGamepadLED(gamepad, 255, 255, 0);
+                RT_LOGF(RT_TAG_CONFIG, "[gamepad] luz amarilla en '%s': %s\n", SDL_GetGamepadName(gamepad),
+                        lit ? "ok" : SDL_GetError());
+            }
+        }
         {  // once per pad: what was found, and its first input (diagnoses "controller does nothing")
             static std::vector<std::pair<SDL_JoystickID, bool>> s_seen;
             auto it = std::find_if(s_seen.begin(), s_seen.end(), [&](const auto& e) { return e.first == ids[i]; });
@@ -449,6 +461,14 @@ Intent GamepadIntent() {
         const int moveStick = WarioMoveStick();
         const float mx = SDL_GetGamepadAxis(gamepad, moveStick == 2 ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
         const float my = -SDL_GetGamepadAxis(gamepad, moveStick == 2 ? SDL_GAMEPAD_AXIS_RIGHTY : SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
+        {  // WARIO: diagnostico (cada medio segundo, solo con el stick movido): que llega del stick de movimiento y del de apuntar.
+            static uint64_t s_axisLogNs = 0;
+            const uint64_t nowNs = SDL_GetTicksNS();
+            if ((std::fabs(mx) > 0.2f || std::fabs(my) > 0.2f || std::fabs(sx) > 0.2f) && nowNs - s_axisLogNs > 500'000'000ull) {
+                s_axisLogNs = nowNs;
+                RT_LOGF(RT_TAG_CONFIG, "[gamepad] stick mover (%d) %.2f %.2f, stick apuntar %.2f %.2f\n", moveStick, mx, my, sx, sy);
+            }
+        }
         constexpr float kStickMin = kStickThreshold / 127.0f;
         const int stickMode = WarioLeftStickMode();
         float stickTilt = 0.0f;
@@ -999,9 +1019,11 @@ bool Sample(uint32_t chan, WiiRemoteInput::KpadSample& sample) {
         }
         if (keyInput) g_lastInputWasPad = false;
         if (pads.buttons != 0 || pads.shake || pads.tilt != 0.0f) g_lastInputWasPad = true;
-        merge(keys);
-        merge(pads);
+        // WARIO: touch/celular primero y el mando despues: el stick gana cuando se mueve, y el angulo de la punta
+        // o del celular toma el control cuando el stick esta quieto. El teclado va al final (sigue mandando).
         merge(TouchIntent());
+        merge(pads);
+        merge(keys);
     }
     // No InputBlocked() check here: the startup cover must still see A/2, and frame_input.cpp / kpad.cpp blank the
     // game's copy after that check.
