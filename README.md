@@ -2,7 +2,7 @@
 
 > ⚠️ **Testing build.** The game boots, saves and is playable, but parts of it are still untested: expect
 > graphical glitches, crashes or features that don't respond yet. If you find one, please open an *issue* and
-> attach the log (`storage/emulated/0(Android/data/com.wario.shakeit/files/Logs`), or the launcher's **Log** page).
+> attach the log (`storage/emulated/0/Android/data/com.wario.shakeit/files/Logs`), or the launcher's **Log** page).
 
 **WarioRecomp** is an unofficial native PC port of *Wario Land: Shake It!* (Wii, 2008, US release `RWLE01`),
 by **Santiago109**. The game's PowerPC code is **statically recompiled** to C++ with
